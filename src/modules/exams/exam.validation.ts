@@ -1,12 +1,22 @@
 import { z } from "zod";
 
+const normalizeEnumInput = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  return value.trim().toUpperCase();
+};
+
 export const createExamBasicInfoSchema = z
   .object({
     title: z.string().trim().min(3).max(180),
     totalCandidates: z.number().int().min(0),
     totalSlots: z.number().int().min(1),
     totalQuestionSet: z.number().int().min(1),
-    questionType: z.enum(["MCQ", "RADIO", "CHECKBOX", "TEXT", "MIXED"]),
+    questionType: z.preprocess(
+      normalizeEnumInput,
+      z.enum(["MCQ", "RADIO", "CHECKBOX", "TEXT", "MIXED"]),
+    ),
     startTime: z.iso.datetime(),
     endTime: z.iso.datetime(),
     durationMinutes: z.number().int().min(1),
@@ -46,7 +56,7 @@ const questionOptionSchema = z.object({
 export const addExamQuestionSchema = z
   .object({
     prompt: z.string().trim().min(1),
-    type: z.enum(["RADIO", "CHECKBOX", "TEXT"]),
+    type: z.preprocess(normalizeEnumInput, z.enum(["RADIO", "CHECKBOX", "TEXT"])),
     marks: z.number().min(0),
     negativeMarks: z.number().min(0).optional().default(0),
     options: z.array(questionOptionSchema).optional().default([]),
