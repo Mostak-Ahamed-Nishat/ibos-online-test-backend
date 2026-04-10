@@ -1,0 +1,27 @@
+{
+  "name": "ibosexamsystem",
+  "version": "1.0.0",
+  "description": "The Online Assessment Platform is a application designed to streamline the process of creating, managing, and participating in online exams. The platform consists of two main panels: an Admin Panel for test creation and management, and a Candidate Panel for taking online test.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mostak-Ahamed-Nishat/ibos-online-test-backend.git"
+  },
+  "keywords": [
+    "Online",
+    "exam",
+    "portal",
+    "assignment",
+    "application",
+    "system"
+  ],
+  "author": "Md Mostak Ahamed Nishat",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Mostak-Ahamed-Nishat/ibos-online-test-backend/issues"
+  },
+  "homepage": "https://github.com/Mostak-Ahamed-Nishat/ibos-online-test-backend#readme"
+}
