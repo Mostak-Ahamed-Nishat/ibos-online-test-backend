@@ -28,6 +28,7 @@ export class ExamService {
       startTime: exam.startTime,
       endTime: exam.endTime,
       durationMinutes: exam.durationMinutes,
+      attemptLimit: exam.attemptLimit,
       status: exam.status,
       createdAt: exam.createdAt,
       updatedAt: exam.updatedAt,
@@ -51,6 +52,7 @@ export class ExamService {
       startTime: start,
       endTime: end,
       durationMinutes: payload.durationMinutes,
+      attemptLimit: payload.attemptLimit,
       status: "DRAFT",
       createdBy: adminUserId,
     });
@@ -89,6 +91,7 @@ export class ExamService {
           startTime: 1,
           endTime: 1,
           durationMinutes: 1,
+          attemptLimit: 1,
           status: 1,
           createdAt: 1,
         })
@@ -144,6 +147,7 @@ export class ExamService {
     if (payload.startTime !== undefined) exam.startTime = nextStart;
     if (payload.endTime !== undefined) exam.endTime = nextEnd;
     if (payload.durationMinutes !== undefined) exam.durationMinutes = payload.durationMinutes;
+    if (payload.attemptLimit !== undefined) exam.attemptLimit = payload.attemptLimit;
 
     await exam.save();
     return this.mapExam(exam.toObject());

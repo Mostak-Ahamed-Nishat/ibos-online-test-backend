@@ -45,6 +45,12 @@ const examSchema = new Schema(
       required: true,
       min: 1,
     },
+    attemptLimit: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 1,
+    },
     status: {
       type: String,
       enum: EXAM_STATUSES,

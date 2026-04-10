@@ -20,6 +20,7 @@ export const createExamBasicInfoSchema = z
     startTime: z.iso.datetime(),
     endTime: z.iso.datetime(),
     durationMinutes: z.number().int().min(1),
+    attemptLimit: z.number().int().min(1).optional().default(1),
   })
   .superRefine((value, ctx) => {
     const start = new Date(value.startTime).getTime();
@@ -123,6 +124,7 @@ export const updateExamBasicInfoSchema = z
     startTime: z.iso.datetime().optional(),
     endTime: z.iso.datetime().optional(),
     durationMinutes: z.number().int().min(1).optional(),
+    attemptLimit: z.number().int().min(1).optional(),
   })
   .superRefine((value, ctx) => {
     if (
@@ -133,7 +135,8 @@ export const updateExamBasicInfoSchema = z
       value.questionType === undefined &&
       value.startTime === undefined &&
       value.endTime === undefined &&
-      value.durationMinutes === undefined
+      value.durationMinutes === undefined &&
+      value.attemptLimit === undefined
     ) {
       ctx.addIssue({
         code: "custom",
