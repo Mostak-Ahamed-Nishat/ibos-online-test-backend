@@ -5,7 +5,6 @@ import { app } from "./app";
 
 export const startServer = async (): Promise<void> => {
   await connectToDatabase();
-
   app.listen(env.port, () => {
     console.log(`Server running on port ${env.port}`);
   });
