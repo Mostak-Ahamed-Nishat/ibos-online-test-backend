@@ -1,110 +1,45 @@
-import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { ApiError } from "../../utils/api-error";
 import { env } from "../../config/env";
-import { isEmailServiceConfigured, sendEmail } from "../../services/email.service";
 import { issueAccessToken } from "./auth.token";
 import {
   EmailVerificationTokenModel,
-  RefreshTokenModel,
+  PasswordResetTokenModel,
   UserModel,
 } from "./models";
 import type {
+  ForgotPasswordInput,
   LoginInput,
   LogoutAllInput,
   LogoutInput,
   RefreshTokenInput,
+  ResetPasswordInput,
   ResendVerificationInput,
   RegisterInput,
   VerifyEmailQueryInput,
 } from "./auth.validation";
+import {
+  buildResetLink,
+  buildVerificationLink,
+  createEmailVerificationToken,
+  createPasswordResetToken,
+  ensureEmailServiceConfigured,
+  sendResetPasswordEmail,
+  sendVerificationEmail,
+} from "./auth-email.service";
+import { auditAuthEvent } from "./auth-audit.service";
+import {
+  createRefreshToken,
+  findActiveRefreshToken,
+  revokeAllActiveRefreshTokens,
+  revokeSingleRefreshToken,
+  rotateRefreshToken,
+} from "./auth-session.service";
+import { generateUniqueStudentId, hashToken, type RequestMeta } from "./auth.util";
 
 export class AuthService {
   private readonly resendCooldownMs = 3 * 60 * 1000;
   private readonly accessTokenExpiresInSeconds = 15 * 60;
-
-  private async generateUniqueStudentId(): Promise<string> {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      let generated = "";
-      for (let i = 0; i < 6; i += 1) {
-        generated += chars[Math.floor(Math.random() * chars.length)];
-      }
-
-      // Retry on collision; index also protects uniqueness at DB level.
-      const exists = await UserModel.exists({ studentId: generated });
-      if (!exists) {
-        return generated;
-      }
-    }
-
-    throw new ApiError(500, "Could not generate unique student id");
-  }
-
-  private async createEmailVerificationToken(userId: string): Promise<string> {
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-    await EmailVerificationTokenModel.create({
-      userId,
-      tokenHash,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      usedAt: null,
-    });
-
-    return rawToken;
-  }
-
-  private async sendVerificationEmail(to: string, verificationLink: string): Promise<void> {
-    await sendEmail({
-      to,
-      subject: "Verify your email address",
-      text: `Welcome to iBOS Exam. Verify your email: ${verificationLink}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-          <h2>Verify your email</h2>
-          <p>Welcome to iBOS Exam. Please verify your email to activate your account.</p>
-          <p>
-            <a href="${verificationLink}" target="_blank" rel="noreferrer">Verify Email</a>
-          </p>
-          <p>If the button does not work, use this link:</p>
-          <p>${verificationLink}</p>
-        </div>
-      `,
-    });
-  }
-
-  private async createRefreshToken(userId: string): Promise<string> {
-    const rawRefreshToken = crypto.randomBytes(48).toString("hex");
-    const refreshTokenHash = this.hashToken(rawRefreshToken);
-    const expiresAt = new Date(
-      Date.now() + env.refreshTokenExpiresInDays * 24 * 60 * 60 * 1000,
-    );
-
-    await RefreshTokenModel.create({
-      userId,
-      tokenHash: refreshTokenHash,
-      expiresAt,
-      revokedAt: null,
-    });
-
-    return rawRefreshToken;
-  }
-
-  private hashToken(token: string): string {
-    return crypto.createHash("sha256").update(token).digest("hex");
-  }
-
-  private async findActiveRefreshToken(rawRefreshToken: string) {
-    const tokenHash = this.hashToken(rawRefreshToken);
-
-    return RefreshTokenModel.findOne({
-      tokenHash,
-      revokedAt: null,
-      expiresAt: { $gt: new Date() },
-    });
-  }
 
   private issueTokenPair(user: {
     _id: unknown;
@@ -126,9 +61,7 @@ export class AuthService {
     message: string;
     verificationLink?: string;
   }> {
-    if (!isEmailServiceConfigured()) {
-      throw new ApiError(500, "Email service is not configured");
-    }
+    ensureEmailServiceConfigured();
 
     const existingUser = await UserModel.findOne({ email: payload.email }).lean();
     if (existingUser) {
@@ -136,7 +69,7 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 12);
-    const studentId = await this.generateUniqueStudentId();
+    const studentId = await generateUniqueStudentId();
 
     const user = await UserModel.create({
       studentId,
@@ -147,10 +80,9 @@ export class AuthService {
       isEmailVerified: false,
     });
 
-    const rawToken = await this.createEmailVerificationToken(String(user._id));
-
-    const verificationLink = `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
-    await this.sendVerificationEmail(user.email, verificationLink);
+    const rawToken = await createEmailVerificationToken(String(user._id));
+    const verificationLink = buildVerificationLink(rawToken);
+    await sendVerificationEmail(user.email, verificationLink);
 
     return {
       message: "Registration successful. Verification email has been sent.",
@@ -158,7 +90,10 @@ export class AuthService {
     };
   }
 
-  async login(payload: LoginInput): Promise<{
+  async login(
+    payload: LoginInput,
+    requestMeta?: RequestMeta,
+  ): Promise<{
     message: string;
     tokens: {
       accessToken: string;
@@ -169,20 +104,42 @@ export class AuthService {
   }> {
     const user = await UserModel.findOne({ email: payload.email });
     if (!user) {
+      await auditAuthEvent({
+        action: "auth.login.failed",
+        metadata: { email: payload.email, reason: "user_not_found" },
+        requestMeta,
+      });
       throw new ApiError(401, "Invalid email or password");
     }
 
     if (user.status !== "ACTIVE") {
+      await auditAuthEvent({
+        action: "auth.login.failed",
+        actorUserId: String(user._id),
+        metadata: { reason: "inactive_user" },
+        requestMeta,
+      });
       throw new ApiError(403, "Your account is suspended");
     }
 
     const passwordMatched = await bcrypt.compare(payload.password, user.passwordHash);
     if (!passwordMatched) {
+      await auditAuthEvent({
+        action: "auth.login.failed",
+        actorUserId: String(user._id),
+        metadata: { reason: "invalid_password" },
+        requestMeta,
+      });
       throw new ApiError(401, "Invalid email or password");
     }
 
-    // Candidate must verify email first; admins can log in without this gate.
     if (user.role === "CANDIDATE" && !user.isEmailVerified) {
+      await auditAuthEvent({
+        action: "auth.login.failed",
+        actorUserId: String(user._id),
+        metadata: { reason: "email_not_verified" },
+        requestMeta,
+      });
       throw new ApiError(403, "Please verify your email before login");
     }
 
@@ -190,7 +147,13 @@ export class AuthService {
     await user.save();
 
     const { accessToken } = this.issueTokenPair(user);
-    const refreshToken = await this.createRefreshToken(String(user._id));
+    const refreshToken = await createRefreshToken(String(user._id));
+
+    await auditAuthEvent({
+      action: "auth.login.success",
+      actorUserId: String(user._id),
+      requestMeta,
+    });
 
     return {
       message: "Login successful",
@@ -204,13 +167,12 @@ export class AuthService {
   }
 
   async verifyEmail(query: VerifyEmailQueryInput): Promise<{ message: string }> {
-    // Compare hashed version of incoming token with stored hash.
-    const tokenHash = crypto.createHash("sha256").update(query.token).digest("hex");
+    const tokenHashValue = hashToken(query.token);
     const now = new Date();
 
     const tokenDoc = await EmailVerificationTokenModel.findOneAndUpdate(
       {
-        tokenHash,
+        tokenHash: tokenHashValue,
         usedAt: null,
         expiresAt: { $gt: now },
       },
@@ -222,24 +184,18 @@ export class AuthService {
       throw new ApiError(400, "Invalid or expired verification token");
     }
 
-    // Mark user verified.
     await UserModel.updateOne({ _id: tokenDoc.userId }, { $set: { isEmailVerified: true } });
 
-    // Invalidate any other active verification tokens for this user.
     await EmailVerificationTokenModel.updateMany(
       { userId: tokenDoc.userId, usedAt: null },
       { $set: { usedAt: now } },
     );
 
-    return {
-      message: "Email verified successfully. You can now login.",
-    };
+    return { message: "Email verified successfully. You can now login." };
   }
 
   async resendVerification(payload: ResendVerificationInput): Promise<{ message: string }> {
-    if (!isEmailServiceConfigured()) {
-      throw new ApiError(500, "Email service is not configured");
-    }
+    ensureEmailServiceConfigured();
 
     const genericMessage = "If the email is registered, a verification link has been sent.";
     const user = await UserModel.findOne({ email: payload.email });
@@ -248,9 +204,7 @@ export class AuthService {
       return { message: genericMessage };
     }
 
-    const lastIssuedToken = await EmailVerificationTokenModel.findOne({
-      userId: user._id,
-    })
+    const lastIssuedToken = await EmailVerificationTokenModel.findOne({ userId: user._id })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -266,14 +220,91 @@ export class AuthService {
       { $set: { usedAt: new Date() } },
     );
 
-    const rawToken = await this.createEmailVerificationToken(String(user._id));
-    const verificationLink = `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
-    await this.sendVerificationEmail(user.email, verificationLink);
+    const rawToken = await createEmailVerificationToken(String(user._id));
+    await sendVerificationEmail(user.email, buildVerificationLink(rawToken));
 
     return { message: genericMessage };
   }
 
-  async refreshToken(payload: RefreshTokenInput): Promise<{
+  async forgotPassword(
+    payload: ForgotPasswordInput,
+    requestMeta?: RequestMeta,
+  ): Promise<{ message: string }> {
+    ensureEmailServiceConfigured();
+
+    const genericMessage = "If the email is registered, a password reset link has been sent.";
+    const user = await UserModel.findOne({ email: payload.email });
+
+    if (!user) {
+      await auditAuthEvent({
+        action: "auth.forgot_password.request",
+        metadata: { email: payload.email, userFound: false },
+        requestMeta,
+      });
+      return { message: genericMessage };
+    }
+
+    await PasswordResetTokenModel.updateMany(
+      { userId: user._id, usedAt: null },
+      { $set: { usedAt: new Date() } },
+    );
+
+    const rawToken = await createPasswordResetToken(String(user._id));
+    await sendResetPasswordEmail(user.email, buildResetLink(rawToken));
+
+    await auditAuthEvent({
+      action: "auth.forgot_password.request",
+      actorUserId: String(user._id),
+      metadata: { userFound: true },
+      requestMeta,
+    });
+
+    return { message: genericMessage };
+  }
+
+  async resetPassword(
+    payload: ResetPasswordInput,
+    requestMeta?: RequestMeta,
+  ): Promise<{ message: string }> {
+    const tokenHashValue = hashToken(payload.token);
+    const now = new Date();
+
+    const resetTokenDoc = await PasswordResetTokenModel.findOneAndUpdate(
+      {
+        tokenHash: tokenHashValue,
+        usedAt: null,
+        expiresAt: { $gt: now },
+      },
+      { $set: { usedAt: now } },
+      { new: true },
+    );
+
+    if (!resetTokenDoc) {
+      await auditAuthEvent({
+        action: "auth.reset_password.failed",
+        metadata: { reason: "invalid_or_expired_token" },
+        requestMeta,
+      });
+      throw new ApiError(400, "Invalid or expired reset token");
+    }
+
+    const passwordHash = await bcrypt.hash(payload.newPassword, 12);
+    await UserModel.updateOne({ _id: resetTokenDoc.userId }, { $set: { passwordHash } });
+    await revokeAllActiveRefreshTokens(String(resetTokenDoc.userId), now);
+
+    await auditAuthEvent({
+      action: "auth.reset_password.success",
+      actorUserId: String(resetTokenDoc.userId),
+      requestMeta,
+    });
+
+    return { message: "Password reset successful. Please login again." };
+  }
+
+  async refreshToken(
+    payload: RefreshTokenInput,
+    requestMeta?: RequestMeta,
+  ): Promise<{
     message: string;
     tokens: {
       accessToken: string;
@@ -282,29 +313,46 @@ export class AuthService {
       expiresIn: number;
     };
   }> {
-    const existingToken = await this.findActiveRefreshToken(payload.refreshToken);
+    const existingToken = await findActiveRefreshToken(payload.refreshToken);
 
     if (!existingToken) {
+      await auditAuthEvent({
+        action: "auth.refresh.failed",
+        metadata: { reason: "invalid_or_expired_token" },
+        requestMeta,
+      });
       throw new ApiError(401, "Invalid or expired refresh token");
     }
 
     const user = await UserModel.findById(existingToken.userId);
     if (!user || user.status !== "ACTIVE") {
+      await auditAuthEvent({
+        action: "auth.refresh.failed",
+        actorUserId: user ? String(user._id) : null,
+        metadata: { reason: "user_not_found_or_inactive" },
+        requestMeta,
+      });
       throw new ApiError(401, "User not found or inactive");
     }
 
     if (user.role === "CANDIDATE" && !user.isEmailVerified) {
+      await auditAuthEvent({
+        action: "auth.refresh.failed",
+        actorUserId: String(user._id),
+        metadata: { reason: "email_not_verified" },
+        requestMeta,
+      });
       throw new ApiError(403, "Please verify your email before login");
     }
 
     const { accessToken } = this.issueTokenPair(user);
-    const newRefreshToken = await this.createRefreshToken(String(user._id));
-    const newRefreshTokenHash = this.hashToken(newRefreshToken);
-    const newTokenDoc = await RefreshTokenModel.findOne({ tokenHash: newRefreshTokenHash });
+    const newRefreshToken = await rotateRefreshToken(String(existingToken._id), String(user._id));
 
-    existingToken.revokedAt = new Date();
-    existingToken.replacedByTokenId = newTokenDoc?._id ?? null;
-    await existingToken.save();
+    await auditAuthEvent({
+      action: "auth.refresh.success",
+      actorUserId: String(user._id),
+      requestMeta,
+    });
 
     return {
       message: "Token refreshed successfully",
@@ -317,30 +365,44 @@ export class AuthService {
     };
   }
 
-  async logout(payload: LogoutInput): Promise<{ message: string }> {
-    const existingToken = await this.findActiveRefreshToken(payload.refreshToken);
+  async logout(
+    payload: LogoutInput,
+    requestMeta?: RequestMeta,
+  ): Promise<{ message: string }> {
+    const existingToken = await findActiveRefreshToken(payload.refreshToken);
 
     if (!existingToken) {
       return { message: "Logout successful" };
     }
 
-    existingToken.revokedAt = new Date();
-    await existingToken.save();
+    await revokeSingleRefreshToken(String(existingToken._id));
+
+    await auditAuthEvent({
+      action: "auth.logout.success",
+      actorUserId: String(existingToken.userId),
+      requestMeta,
+    });
 
     return { message: "Logout successful" };
   }
 
-  async logoutAll(payload: LogoutAllInput): Promise<{ message: string }> {
-    const existingToken = await this.findActiveRefreshToken(payload.refreshToken);
+  async logoutAll(
+    payload: LogoutAllInput,
+    requestMeta?: RequestMeta,
+  ): Promise<{ message: string }> {
+    const existingToken = await findActiveRefreshToken(payload.refreshToken);
 
     if (!existingToken) {
       return { message: "Logout successful from all devices" };
     }
 
-    await RefreshTokenModel.updateMany(
-      { userId: existingToken.userId, revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    );
+    await revokeAllActiveRefreshTokens(String(existingToken.userId), new Date());
+
+    await auditAuthEvent({
+      action: "auth.logout_all.success",
+      actorUserId: String(existingToken.userId),
+      requestMeta,
+    });
 
     return { message: "Logout successful from all devices" };
   }

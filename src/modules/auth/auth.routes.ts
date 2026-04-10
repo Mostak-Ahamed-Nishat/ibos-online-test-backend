@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { authController } from "./auth.controller";
 import { validateRequest } from "../../middlewares/validate-request.middleware";
+import { authLimiter, loginLimiter } from "../../middlewares/rate-limit.middleware";
 import {
+  forgotPasswordSchema,
   loginSchema,
-  logoutAllSchema,
-  logoutSchema,
-  refreshTokenSchema,
   registerSchema,
+  resetPasswordSchema,
   resendVerificationSchema,
   verifyEmailQuerySchema,
 } from "./auth.validation";
@@ -14,18 +14,26 @@ import {
 const authRouter = Router();
 
 authRouter.post("/register", validateRequest({ body: registerSchema }), authController.register);
-authRouter.post("/login", validateRequest({ body: loginSchema }), authController.login);
 authRouter.post(
-  "/refresh-token",
-  validateRequest({ body: refreshTokenSchema }),
-  authController.refreshToken,
+  "/login",
+  loginLimiter,
+  validateRequest({ body: loginSchema }),
+  authController.login,
 );
-authRouter.post("/logout", validateRequest({ body: logoutSchema }), authController.logout);
 authRouter.post(
-  "/logout-all",
-  validateRequest({ body: logoutAllSchema }),
-  authController.logoutAll,
+  "/forgot-password",
+  authLimiter,
+  validateRequest({ body: forgotPasswordSchema }),
+  authController.forgotPassword,
 );
+authRouter.post(
+  "/reset-password",
+  validateRequest({ body: resetPasswordSchema }),
+  authController.resetPassword,
+);
+authRouter.post("/refresh-token", authLimiter, authController.refreshToken);
+authRouter.post("/logout", authController.logout);
+authRouter.post("/logout-all", authController.logoutAll);
 authRouter.get(
   "/verify-email",
   validateRequest({ query: verifyEmailQuerySchema }),
@@ -33,6 +41,7 @@ authRouter.get(
 );
 authRouter.post(
   "/resend-verification",
+  authLimiter,
   validateRequest({ body: resendVerificationSchema }),
   authController.resendVerification,
 );

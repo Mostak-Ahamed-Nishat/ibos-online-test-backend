@@ -9,7 +9,7 @@ export const errorMiddleware = (
   res: Response,
   _next: NextFunction,
 ): void => {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "development") {
     console.error(error);
   }
 
@@ -53,7 +53,7 @@ export const errorMiddleware = (
     res,
     statusCode: 500,
     message: "Internal server error",
-    ...(process.env.NODE_ENV !== "production" && error instanceof Error
+    ...(process.env.NODE_ENV === "development" && error instanceof Error
       ? { stack: error.stack }
       : {}),
   });

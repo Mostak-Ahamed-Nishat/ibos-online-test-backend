@@ -18,6 +18,7 @@ export const env = {
   accessTokenSecret: process.env.ACCESS_TOKEN_SECRET as string,
   accessTokenExpiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN ?? "15m",
   refreshTokenExpiresInDays: Number(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? 30),
+  refreshTokenCookieName: process.env.REFRESH_TOKEN_COOKIE_NAME ?? "refreshToken",
   smtpHost: process.env.SMTP_HOST ?? "",
   smtpPort: Number(process.env.SMTP_PORT ?? 587),
   smtpUser: process.env.SMTP_USER ?? "",

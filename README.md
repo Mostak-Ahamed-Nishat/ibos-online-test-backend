@@ -19,6 +19,24 @@ Backend service for the Online Assessment Platform.
 
 - `GET /api/health`
 
+### Auth (Current)
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/verify-email`
+- `POST /api/auth/resend-verification`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/refresh-token`
+- `POST /api/auth/logout`
+- `POST /api/auth/logout-all`
+
+Notes:
+- Refresh token is delivered via `httpOnly` cookie (`REFRESH_TOKEN_COOKIE_NAME`).
+- `refresh-token`, `logout`, and `logout-all` read refresh token from cookie (body fallback supported).
+- Auth routes use rate limiting for login, forgot-password, resend-verification, and refresh-token.
+- Basic auth audit events are persisted in `AuditLog` collection.
+
 ## Environment Variables
 
 Create a `.env` file in `/`:
@@ -27,6 +45,16 @@ Create a `.env` file in `/`:
 NODE_ENV=development
 PORT=5000
 MONGODB_URI=mongodb://127.0.0.1:27017/ibos_exam_system
+APP_BASE_URL=http://localhost:5000
+ACCESS_TOKEN_SECRET=change_this_to_a_long_random_secret
+ACCESS_TOKEN_EXPIRES_IN=15m
+REFRESH_TOKEN_EXPIRES_IN_DAYS=30
+REFRESH_TOKEN_COOKIE_NAME=refreshToken
+SMTP_HOST=sandbox.smtp.mailtrap.io
+SMTP_PORT=2525
+SMTP_USER=your_mailtrap_username
+SMTP_PASS=your_mailtrap_password
+SMTP_FROM="iBOS Exam <no-reply@example.com>"
 ```
 
 ## Scripts
