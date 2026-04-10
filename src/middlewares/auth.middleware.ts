@@ -14,7 +14,12 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
     throw new ApiError(401, "Unauthorized");
   }
 
-  req.user = verifyAccessToken(accessToken);
+  try {
+    req.user = verifyAccessToken(accessToken);
+  } catch (_error) {
+    throw new ApiError(401, "Invalid or expired access token");
+  }
+
   next();
 };
 
@@ -26,7 +31,11 @@ export const requireRole =
     }
 
     if (!allowedRoles.includes(req.user.role)) {
-      throw new ApiError(403, "Forbidden");
+      const debugMessage =
+        process.env.NODE_ENV === "development"
+          ? `Forbidden: requires one of [${allowedRoles.join(", ")}], got ${req.user.role}`
+          : "Forbidden";
+      throw new ApiError(403, debugMessage);
     }
 
     next();
