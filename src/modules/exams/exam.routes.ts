@@ -9,7 +9,9 @@ import {
   examIdParamSchema,
   examQuestionIdParamSchema,
   listExamQuerySchema,
+  updateExamBasicInfoSchema,
   updateExamQuestionSchema,
+  updateExamStatusSchema,
 } from "./exam.validation";
 
 const examRouter = Router();
@@ -28,6 +30,38 @@ examRouter.post(
   requireRole(["ADMIN"]),
   validateRequest({ body: createExamBasicInfoSchema }),
   examController.createBasicInfo,
+);
+
+examRouter.get(
+  "/:examId",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  validateRequest({ params: examIdParamSchema }),
+  examController.getExamById,
+);
+
+examRouter.patch(
+  "/:examId",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  validateRequest({ params: examIdParamSchema, body: updateExamBasicInfoSchema }),
+  examController.updateBasicInfo,
+);
+
+examRouter.patch(
+  "/:examId/status",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  validateRequest({ params: examIdParamSchema, body: updateExamStatusSchema }),
+  examController.updateStatus,
+);
+
+examRouter.delete(
+  "/:examId",
+  requireAuth,
+  requireRole(["ADMIN"]),
+  validateRequest({ params: examIdParamSchema }),
+  examController.deleteExam,
 );
 
 examRouter.get(

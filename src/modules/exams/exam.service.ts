@@ -7,12 +7,31 @@ import type {
   AddExamQuestionInput,
   CreateExamBasicInfoInput,
   ListExamQueryInput,
+  UpdateExamBasicInfoInput,
+  UpdateExamStatusInput,
   UpdateExamQuestionInput,
 } from "./exam.validation";
 
 export class ExamService {
   private buildPromptKey(prompt: string): string {
     return prompt.trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  private mapExam(exam: Record<string, any>) {
+    return {
+      id: String(exam._id),
+      title: exam.title,
+      totalCandidates: exam.totalCandidates,
+      totalSlots: exam.totalSlots,
+      totalQuestionSet: exam.totalQuestionSet,
+      questionType: exam.questionType,
+      startTime: exam.startTime,
+      endTime: exam.endTime,
+      durationMinutes: exam.durationMinutes,
+      status: exam.status,
+      createdAt: exam.createdAt,
+      updatedAt: exam.updatedAt,
+    };
   }
 
   async createBasicInfo(payload: CreateExamBasicInfoInput, adminUserId: string) {
@@ -36,18 +55,7 @@ export class ExamService {
       createdBy: adminUserId,
     });
 
-    return {
-      id: String(exam._id),
-      title: exam.title,
-      totalCandidates: exam.totalCandidates,
-      totalSlots: exam.totalSlots,
-      totalQuestionSet: exam.totalQuestionSet,
-      questionType: exam.questionType,
-      startTime: exam.startTime,
-      endTime: exam.endTime,
-      durationMinutes: exam.durationMinutes,
-      status: exam.status,
-    };
+    return this.mapExam(exam.toObject());
   }
 
   async listExams(query: ListExamQueryInput, adminUserId: string) {
@@ -92,17 +100,7 @@ export class ExamService {
 
     return {
       items: items.map((exam) => ({
-        id: String(exam._id),
-        title: exam.title,
-        totalCandidates: exam.totalCandidates,
-        totalSlots: exam.totalSlots,
-        totalQuestionSet: exam.totalQuestionSet,
-        questionType: exam.questionType,
-        startTime: exam.startTime,
-        endTime: exam.endTime,
-        durationMinutes: exam.durationMinutes,
-        status: exam.status,
-        createdAt: exam.createdAt,
+        ...this.mapExam(exam),
       })),
       pagination: {
         total,
@@ -111,6 +109,78 @@ export class ExamService {
         totalPages,
       },
     };
+  }
+
+  async getExamById(examId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId }).lean();
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    return this.mapExam(exam);
+  }
+
+  async updateExamBasicInfo(payload: UpdateExamBasicInfoInput, examId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId });
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    if (exam.status !== "DRAFT") {
+      throw new ApiError(409, "Only draft exams can be edited");
+    }
+
+    const nextStart = payload.startTime ? new Date(payload.startTime) : exam.startTime;
+    const nextEnd = payload.endTime ? new Date(payload.endTime) : exam.endTime;
+    if (nextEnd <= nextStart) {
+      throw new ApiError(400, "End time must be after start time");
+    }
+
+    if (payload.title !== undefined) exam.title = payload.title;
+    if (payload.totalCandidates !== undefined) exam.totalCandidates = payload.totalCandidates;
+    if (payload.totalSlots !== undefined) exam.totalSlots = payload.totalSlots;
+    if (payload.totalQuestionSet !== undefined) exam.totalQuestionSet = payload.totalQuestionSet;
+    if (payload.questionType !== undefined) exam.questionType = payload.questionType;
+    if (payload.startTime !== undefined) exam.startTime = nextStart;
+    if (payload.endTime !== undefined) exam.endTime = nextEnd;
+    if (payload.durationMinutes !== undefined) exam.durationMinutes = payload.durationMinutes;
+
+    await exam.save();
+    return this.mapExam(exam.toObject());
+  }
+
+  async updateExamStatus(payload: UpdateExamStatusInput, examId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId });
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    if (exam.status === "EXPIRED") {
+      throw new ApiError(409, "Expired exam status cannot be changed");
+    }
+
+    if (payload.status === "DRAFT" && exam.status !== "DRAFT") {
+      throw new ApiError(409, "Published exam cannot be moved back to draft");
+    }
+
+    exam.status = payload.status;
+    await exam.save();
+
+    return this.mapExam(exam.toObject());
+  }
+
+  async deleteExam(examId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId }).lean();
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    await Promise.all([
+      ExamQuestionModel.deleteMany({ examId }),
+      ExamModel.deleteOne({ _id: examId, createdBy: adminUserId }),
+    ]);
+
+    return { id: String(exam._id) };
   }
 
   async addQuestion(payload: AddExamQuestionInput, examId: string, adminUserId: string) {

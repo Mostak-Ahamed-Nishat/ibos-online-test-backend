@@ -111,6 +111,56 @@ export const addExamQuestionSchema = z
 export type ExamIdParamInput = z.infer<typeof examIdParamSchema>;
 export type AddExamQuestionInput = z.infer<typeof addExamQuestionSchema>;
 
+export const updateExamBasicInfoSchema = z
+  .object({
+    title: z.string().trim().min(3).max(180).optional(),
+    totalCandidates: z.number().int().min(0).optional(),
+    totalSlots: z.number().int().min(1).optional(),
+    totalQuestionSet: z.number().int().min(1).optional(),
+    questionType: z
+      .preprocess(normalizeEnumInput, z.enum(["MCQ", "RADIO", "CHECKBOX", "TEXT", "MIXED"]))
+      .optional(),
+    startTime: z.iso.datetime().optional(),
+    endTime: z.iso.datetime().optional(),
+    durationMinutes: z.number().int().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.title === undefined &&
+      value.totalCandidates === undefined &&
+      value.totalSlots === undefined &&
+      value.totalQuestionSet === undefined &&
+      value.questionType === undefined &&
+      value.startTime === undefined &&
+      value.endTime === undefined &&
+      value.durationMinutes === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "At least one field is required for update",
+      });
+      return;
+    }
+
+    if (value.startTime && value.endTime) {
+      const start = new Date(value.startTime).getTime();
+      const end = new Date(value.endTime).getTime();
+
+      if (end <= start) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["endTime"],
+          message: "End time must be after start time",
+        });
+      }
+    }
+  });
+
+export const updateExamStatusSchema = z.object({
+  status: z.preprocess(normalizeEnumInput, z.enum(["DRAFT", "PUBLISHED", "EXPIRED"])),
+});
+
 export const updateExamQuestionSchema = z
   .object({
     prompt: z.string().trim().min(1).optional(),
@@ -177,3 +227,5 @@ export const updateExamQuestionSchema = z
 export type ExamQuestionIdParamInput = z.infer<typeof examQuestionIdParamSchema>;
 export type UpdateExamQuestionInput = z.infer<typeof updateExamQuestionSchema>;
 export type AddQuestionFromBankInput = z.infer<typeof addQuestionFromBankSchema>;
+export type UpdateExamBasicInfoInput = z.infer<typeof updateExamBasicInfoSchema>;
+export type UpdateExamStatusInput = z.infer<typeof updateExamStatusSchema>;

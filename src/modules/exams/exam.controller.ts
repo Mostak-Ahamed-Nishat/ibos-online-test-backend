@@ -9,6 +9,8 @@ import type {
   ExamQuestionIdParamInput,
   ExamIdParamInput,
   ListExamQueryInput,
+  UpdateExamBasicInfoInput,
+  UpdateExamStatusInput,
   UpdateExamQuestionInput,
 } from "./exam.validation";
 
@@ -40,6 +42,68 @@ class ExamController {
     res.status(201).json({
       success: true,
       message: "Exam basic information created",
+      data: result,
+    });
+  });
+
+  getExamById = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    const params = req.params as unknown as ExamIdParamInput;
+    const result = await examService.getExamById(params.examId, req.user.sub);
+
+    res.status(200).json({
+      success: true,
+      message: "Exam details fetched successfully",
+      data: result,
+    });
+  });
+
+  updateBasicInfo = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    const params = req.params as unknown as ExamIdParamInput;
+    const payload = req.body as UpdateExamBasicInfoInput;
+    const result = await examService.updateExamBasicInfo(payload, params.examId, req.user.sub);
+
+    res.status(200).json({
+      success: true,
+      message: "Exam updated successfully",
+      data: result,
+    });
+  });
+
+  updateStatus = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    const params = req.params as unknown as ExamIdParamInput;
+    const payload = req.body as UpdateExamStatusInput;
+    const result = await examService.updateExamStatus(payload, params.examId, req.user.sub);
+
+    res.status(200).json({
+      success: true,
+      message: "Exam status updated successfully",
+      data: result,
+    });
+  });
+
+  deleteExam = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    const params = req.params as unknown as ExamIdParamInput;
+    const result = await examService.deleteExam(params.examId, req.user.sub);
+
+    res.status(200).json({
+      success: true,
+      message: "Exam deleted successfully",
       data: result,
     });
   });
