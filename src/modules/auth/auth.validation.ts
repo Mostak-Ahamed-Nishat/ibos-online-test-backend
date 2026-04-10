@@ -26,7 +26,17 @@ export const resendVerificationSchema = z.object({
   email: z.email("Invalid email address").transform((value) => value.toLowerCase()),
 });
 
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().trim().min(1, "Refresh token is required"),
+});
+
+export const logoutSchema = refreshTokenSchema;
+export const logoutAllSchema = refreshTokenSchema;
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type VerifyEmailQueryInput = z.infer<typeof verifyEmailQuerySchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
+export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
+export type LogoutInput = z.infer<typeof logoutSchema>;
+export type LogoutAllInput = z.infer<typeof logoutAllSchema>;

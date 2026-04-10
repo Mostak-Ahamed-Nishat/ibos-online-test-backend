@@ -3,6 +3,9 @@ import { authService } from "./auth.service";
 import { asyncHandler } from "../../utils/async-handler";
 import type {
   LoginInput,
+  LogoutAllInput,
+  LogoutInput,
+  RefreshTokenInput,
   ResendVerificationInput,
   RegisterInput,
   VerifyEmailQueryInput,
@@ -42,6 +45,36 @@ class AuthController {
   resendVerification = asyncHandler(async (req: Request, res: Response) => {
     const payload = req.body as ResendVerificationInput;
     const result = await authService.resendVerification(payload);
+
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  });
+
+  refreshToken = asyncHandler(async (req: Request, res: Response) => {
+    const payload = req.body as RefreshTokenInput;
+    const result = await authService.refreshToken(payload);
+
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  });
+
+  logout = asyncHandler(async (req: Request, res: Response) => {
+    const payload = req.body as LogoutInput;
+    const result = await authService.logout(payload);
+
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  });
+
+  logoutAll = asyncHandler(async (req: Request, res: Response) => {
+    const payload = req.body as LogoutAllInput;
+    const result = await authService.logoutAll(payload);
 
     res.status(200).json({
       success: true,

@@ -3,18 +3,26 @@ import bcrypt from "bcryptjs";
 import { ApiError } from "../../utils/api-error";
 import { env } from "../../config/env";
 import { isEmailServiceConfigured, sendEmail } from "../../services/email.service";
+import { issueAccessToken } from "./auth.token";
 import {
   EmailVerificationTokenModel,
+  RefreshTokenModel,
   UserModel,
 } from "./models";
 import type {
   LoginInput,
+  LogoutAllInput,
+  LogoutInput,
+  RefreshTokenInput,
   ResendVerificationInput,
   RegisterInput,
   VerifyEmailQueryInput,
 } from "./auth.validation";
 
 export class AuthService {
+  private readonly resendCooldownMs = 3 * 60 * 1000;
+  private readonly accessTokenExpiresInSeconds = 15 * 60;
+
   private async generateUniqueStudentId(): Promise<string> {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -67,6 +75,53 @@ export class AuthService {
     });
   }
 
+  private async createRefreshToken(userId: string): Promise<string> {
+    const rawRefreshToken = crypto.randomBytes(48).toString("hex");
+    const refreshTokenHash = this.hashToken(rawRefreshToken);
+    const expiresAt = new Date(
+      Date.now() + env.refreshTokenExpiresInDays * 24 * 60 * 60 * 1000,
+    );
+
+    await RefreshTokenModel.create({
+      userId,
+      tokenHash: refreshTokenHash,
+      expiresAt,
+      revokedAt: null,
+    });
+
+    return rawRefreshToken;
+  }
+
+  private hashToken(token: string): string {
+    return crypto.createHash("sha256").update(token).digest("hex");
+  }
+
+  private async findActiveRefreshToken(rawRefreshToken: string) {
+    const tokenHash = this.hashToken(rawRefreshToken);
+
+    return RefreshTokenModel.findOne({
+      tokenHash,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() },
+    });
+  }
+
+  private issueTokenPair(user: {
+    _id: unknown;
+    role: "ADMIN" | "CANDIDATE";
+    studentId?: string;
+    email: string;
+  }) {
+    const accessToken = issueAccessToken({
+      sub: String(user._id),
+      role: user.role,
+      studentId: user.role === "CANDIDATE" ? user.studentId : undefined,
+      email: user.email,
+    });
+
+    return { accessToken };
+  }
+
   async register(payload: RegisterInput): Promise<{
     message: string;
     verificationLink?: string;
@@ -103,7 +158,15 @@ export class AuthService {
     };
   }
 
-  async login(payload: LoginInput): Promise<{ message: string }> {
+  async login(payload: LoginInput): Promise<{
+    message: string;
+    tokens: {
+      accessToken: string;
+      refreshToken: string;
+      tokenType: "Bearer";
+      expiresIn: number;
+    };
+  }> {
     const user = await UserModel.findOne({ email: payload.email });
     if (!user) {
       throw new ApiError(401, "Invalid email or password");
@@ -126,8 +189,17 @@ export class AuthService {
     user.lastLoginAt = new Date();
     await user.save();
 
+    const { accessToken } = this.issueTokenPair(user);
+    const refreshToken = await this.createRefreshToken(String(user._id));
+
     return {
       message: "Login successful",
+      tokens: {
+        accessToken,
+        refreshToken,
+        tokenType: "Bearer",
+        expiresIn: this.accessTokenExpiresInSeconds,
+      },
     };
   }
 
@@ -138,9 +210,9 @@ export class AuthService {
 
     const tokenDoc = await EmailVerificationTokenModel.findOneAndUpdate(
       {
-      tokenHash,
-      usedAt: null,
-      expiresAt: { $gt: now },
+        tokenHash,
+        usedAt: null,
+        expiresAt: { $gt: now },
       },
       { $set: { usedAt: now } },
       { new: true },
@@ -176,6 +248,19 @@ export class AuthService {
       return { message: genericMessage };
     }
 
+    const lastIssuedToken = await EmailVerificationTokenModel.findOne({
+      userId: user._id,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (
+      lastIssuedToken?.createdAt &&
+      Date.now() - new Date(lastIssuedToken.createdAt).getTime() < this.resendCooldownMs
+    ) {
+      throw new ApiError(429, "Please wait 3 minutes before requesting again");
+    }
+
     await EmailVerificationTokenModel.updateMany(
       { userId: user._id, usedAt: null },
       { $set: { usedAt: new Date() } },
@@ -186,6 +271,78 @@ export class AuthService {
     await this.sendVerificationEmail(user.email, verificationLink);
 
     return { message: genericMessage };
+  }
+
+  async refreshToken(payload: RefreshTokenInput): Promise<{
+    message: string;
+    tokens: {
+      accessToken: string;
+      refreshToken: string;
+      tokenType: "Bearer";
+      expiresIn: number;
+    };
+  }> {
+    const existingToken = await this.findActiveRefreshToken(payload.refreshToken);
+
+    if (!existingToken) {
+      throw new ApiError(401, "Invalid or expired refresh token");
+    }
+
+    const user = await UserModel.findById(existingToken.userId);
+    if (!user || user.status !== "ACTIVE") {
+      throw new ApiError(401, "User not found or inactive");
+    }
+
+    if (user.role === "CANDIDATE" && !user.isEmailVerified) {
+      throw new ApiError(403, "Please verify your email before login");
+    }
+
+    const { accessToken } = this.issueTokenPair(user);
+    const newRefreshToken = await this.createRefreshToken(String(user._id));
+    const newRefreshTokenHash = this.hashToken(newRefreshToken);
+    const newTokenDoc = await RefreshTokenModel.findOne({ tokenHash: newRefreshTokenHash });
+
+    existingToken.revokedAt = new Date();
+    existingToken.replacedByTokenId = newTokenDoc?._id ?? null;
+    await existingToken.save();
+
+    return {
+      message: "Token refreshed successfully",
+      tokens: {
+        accessToken,
+        refreshToken: newRefreshToken,
+        tokenType: "Bearer",
+        expiresIn: this.accessTokenExpiresInSeconds,
+      },
+    };
+  }
+
+  async logout(payload: LogoutInput): Promise<{ message: string }> {
+    const existingToken = await this.findActiveRefreshToken(payload.refreshToken);
+
+    if (!existingToken) {
+      return { message: "Logout successful" };
+    }
+
+    existingToken.revokedAt = new Date();
+    await existingToken.save();
+
+    return { message: "Logout successful" };
+  }
+
+  async logoutAll(payload: LogoutAllInput): Promise<{ message: string }> {
+    const existingToken = await this.findActiveRefreshToken(payload.refreshToken);
+
+    if (!existingToken) {
+      return { message: "Logout successful from all devices" };
+    }
+
+    await RefreshTokenModel.updateMany(
+      { userId: existingToken.userId, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+
+    return { message: "Logout successful from all devices" };
   }
 }
 
