@@ -42,14 +42,17 @@ class AuthController {
     });
   }
 
-  private getRefreshTokenFromRequest(req: Request): string {
+  private getRefreshTokenFromRequest(req: Request): string | null {
     const cookieToken = req.cookies?.[env.refreshTokenCookieName];
     const bodyToken = (req.body as Partial<RefreshTokenInput>)?.refreshToken;
     const token = cookieToken || bodyToken;
-    if (!token) {
-      throw new ApiError(400, "Refresh token is required");
+
+    if (typeof token !== "string") {
+      return null;
     }
-    return token;
+
+    const normalized = token.trim();
+    return normalized.length > 0 ? normalized : null;
   }
 
   register = asyncHandler(async (req: Request, res: Response) => {
@@ -99,8 +102,13 @@ class AuthController {
   });
 
   refreshToken = asyncHandler(async (req: Request, res: Response) => {
+    const refreshToken = this.getRefreshTokenFromRequest(req);
+    if (!refreshToken) {
+      throw new ApiError(400, "Refresh token is required");
+    }
+
     const result = await authService.refreshToken(
-      { refreshToken: this.getRefreshTokenFromRequest(req) },
+      { refreshToken },
       this.getRequestMeta(req),
     );
     this.setRefreshTokenCookie(res, result.tokens.refreshToken);
@@ -117,11 +125,21 @@ class AuthController {
   });
 
   logout = asyncHandler(async (req: Request, res: Response) => {
+    this.clearRefreshTokenCookie(res);
+    const refreshToken = this.getRefreshTokenFromRequest(req);
+
+    if (!refreshToken) {
+      res.status(200).json({
+        success: true,
+        message: "Logout successful",
+      });
+      return;
+    }
+
     const result = await authService.logout(
-      { refreshToken: this.getRefreshTokenFromRequest(req) } as LogoutInput,
+      { refreshToken } as LogoutInput,
       this.getRequestMeta(req),
     );
-    this.clearRefreshTokenCookie(res);
 
     res.status(200).json({
       success: true,
@@ -130,11 +148,21 @@ class AuthController {
   });
 
   logoutAll = asyncHandler(async (req: Request, res: Response) => {
+    this.clearRefreshTokenCookie(res);
+    const refreshToken = this.getRefreshTokenFromRequest(req);
+
+    if (!refreshToken) {
+      res.status(200).json({
+        success: true,
+        message: "Logout successful from all devices",
+      });
+      return;
+    }
+
     const result = await authService.logoutAll(
-      { refreshToken: this.getRefreshTokenFromRequest(req) } as LogoutAllInput,
+      { refreshToken } as LogoutAllInput,
       this.getRequestMeta(req),
     );
-    this.clearRefreshTokenCookie(res);
 
     res.status(200).json({
       success: true,

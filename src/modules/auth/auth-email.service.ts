@@ -41,7 +41,7 @@ export const buildVerificationLink = (rawToken: string): string =>
   `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
 
 export const buildResetLink = (rawToken: string): string =>
-  `${env.appBaseUrl}/api/auth/reset-password?token=${rawToken}`;
+  `${env.appFrontendUrl}/reset-password?token=${rawToken}`;
 
 export const sendVerificationEmail = async (to: string, verificationLink: string): Promise<void> => {
   await sendEmail({

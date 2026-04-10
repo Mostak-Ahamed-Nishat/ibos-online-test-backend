@@ -15,6 +15,7 @@ export const env = {
   port: Number(process.env.PORT ?? 5000),
   mongoUri: process.env.MONGODB_URI as string,
   appBaseUrl: process.env.APP_BASE_URL ?? "http://localhost:5000",
+  appFrontendUrl: process.env.APP_FRONTEND_URL ?? "http://localhost:5173",
   accessTokenSecret: process.env.ACCESS_TOKEN_SECRET as string,
   accessTokenExpiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN ?? "15m",
   refreshTokenExpiresInDays: Number(process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS ?? 30),
