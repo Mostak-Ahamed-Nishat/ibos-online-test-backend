@@ -9,6 +9,7 @@ import {
 } from "./models";
 import type {
   LoginInput,
+  ResendVerificationInput,
   RegisterInput,
   VerifyEmailQueryInput,
 } from "./auth.validation";
@@ -31,6 +32,39 @@ export class AuthService {
     }
 
     throw new ApiError(500, "Could not generate unique student id");
+  }
+
+  private async createEmailVerificationToken(userId: string): Promise<string> {
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+    await EmailVerificationTokenModel.create({
+      userId,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      usedAt: null,
+    });
+
+    return rawToken;
+  }
+
+  private async sendVerificationEmail(to: string, verificationLink: string): Promise<void> {
+    await sendEmail({
+      to,
+      subject: "Verify your email address",
+      text: `Welcome to iBOS Exam. Verify your email: ${verificationLink}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>Verify your email</h2>
+          <p>Welcome to iBOS Exam. Please verify your email to activate your account.</p>
+          <p>
+            <a href="${verificationLink}" target="_blank" rel="noreferrer">Verify Email</a>
+          </p>
+          <p>If the button does not work, use this link:</p>
+          <p>${verificationLink}</p>
+        </div>
+      `,
+    });
   }
 
   async register(payload: RegisterInput): Promise<{
@@ -58,35 +92,10 @@ export class AuthService {
       isEmailVerified: false,
     });
 
-    // Keep raw token only for the email link; store hashed token in DB.
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-    await EmailVerificationTokenModel.create({
-      userId: user._id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      usedAt: null,
-    });
+    const rawToken = await this.createEmailVerificationToken(String(user._id));
 
     const verificationLink = `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
-
-    await sendEmail({
-      to: user.email,
-      subject: "Verify your email address",
-      text: `Welcome to iBOS Exam. Verify your email: ${verificationLink}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-          <h2>Verify your email</h2>
-          <p>Welcome to iBOS Exam. Please verify your email to activate your account.</p>
-          <p>
-            <a href="${verificationLink}" target="_blank" rel="noreferrer">Verify Email</a>
-          </p>
-          <p>If the button does not work, use this link:</p>
-          <p>${verificationLink}</p>
-        </div>
-      `,
-    });
+    await this.sendVerificationEmail(user.email, verificationLink);
 
     return {
       message: "Registration successful. Verification email has been sent.",
@@ -153,6 +162,30 @@ export class AuthService {
     return {
       message: "Email verified successfully. You can now login.",
     };
+  }
+
+  async resendVerification(payload: ResendVerificationInput): Promise<{ message: string }> {
+    if (!isEmailServiceConfigured()) {
+      throw new ApiError(500, "Email service is not configured");
+    }
+
+    const genericMessage = "If the email is registered, a verification link has been sent.";
+    const user = await UserModel.findOne({ email: payload.email });
+
+    if (!user || user.role !== "CANDIDATE" || user.isEmailVerified) {
+      return { message: genericMessage };
+    }
+
+    await EmailVerificationTokenModel.updateMany(
+      { userId: user._id, usedAt: null },
+      { $set: { usedAt: new Date() } },
+    );
+
+    const rawToken = await this.createEmailVerificationToken(String(user._id));
+    const verificationLink = `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
+    await this.sendVerificationEmail(user.email, verificationLink);
+
+    return { message: genericMessage };
   }
 }
 

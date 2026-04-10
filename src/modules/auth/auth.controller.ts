@@ -3,6 +3,7 @@ import { authService } from "./auth.service";
 import { asyncHandler } from "../../utils/async-handler";
 import type {
   LoginInput,
+  ResendVerificationInput,
   RegisterInput,
   VerifyEmailQueryInput,
 } from "./auth.validation";
@@ -31,6 +32,16 @@ class AuthController {
   verifyEmail = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as VerifyEmailQueryInput;
     const result = await authService.verifyEmail(query);
+
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  });
+
+  resendVerification = asyncHandler(async (req: Request, res: Response) => {
+    const payload = req.body as ResendVerificationInput;
+    const result = await authService.resendVerification(payload);
 
     res.status(200).json({
       success: true,

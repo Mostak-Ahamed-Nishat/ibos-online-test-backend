@@ -4,6 +4,7 @@ import { validateRequest } from "../../middlewares/validate-request.middleware";
 import {
   loginSchema,
   registerSchema,
+  resendVerificationSchema,
   verifyEmailQuerySchema,
 } from "./auth.validation";
 
@@ -15,6 +16,11 @@ authRouter.get(
   "/verify-email",
   validateRequest({ query: verifyEmailQuerySchema }),
   authController.verifyEmail,
+);
+authRouter.post(
+  "/resend-verification",
+  validateRequest({ body: resendVerificationSchema }),
+  authController.resendVerification,
 );
 
 export { authRouter };
