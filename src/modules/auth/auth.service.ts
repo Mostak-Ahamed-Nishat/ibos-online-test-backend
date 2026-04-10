@@ -406,6 +406,32 @@ export class AuthService {
 
     return { message: "Logout successful from all devices" };
   }
+
+  async getCurrentUser(userId: string): Promise<{
+    id: string;
+    studentId: string;
+    fullName: string;
+    email: string;
+    role: "ADMIN" | "CANDIDATE";
+    isEmailVerified: boolean;
+    status: "ACTIVE" | "SUSPENDED";
+  }> {
+    const user = await UserModel.findById(userId).lean();
+
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    return {
+      id: String(user._id),
+      studentId: user.studentId,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      isEmailVerified: user.isEmailVerified,
+      status: user.status,
+    };
+  }
 }
 
 export const authService = new AuthService();

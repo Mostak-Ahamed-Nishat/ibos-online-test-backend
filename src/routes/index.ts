@@ -1,6 +1,7 @@
 import { Router } from "express";
 import mongoose from "mongoose";
 import { authRouter } from "../modules/auth/auth.routes";
+import { adminRouter } from "../modules/admin/admin.routes";
 
 const router = Router();
 
@@ -21,5 +22,6 @@ router.get("/health", (_req, res) => {
 });
 
 router.use("/auth", authRouter);
+router.use("/admin", adminRouter);
 
 export { router };

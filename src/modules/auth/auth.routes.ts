@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authController } from "./auth.controller";
 import { validateRequest } from "../../middlewares/validate-request.middleware";
 import { authLimiter, loginLimiter } from "../../middlewares/rate-limit.middleware";
+import { requireAuth } from "../../middlewares/auth.middleware";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -13,6 +14,7 @@ import {
 
 const authRouter = Router();
 
+authRouter.get("/me", requireAuth, authController.me);
 authRouter.post("/register", validateRequest({ body: registerSchema }), authController.register);
 authRouter.post(
   "/login",

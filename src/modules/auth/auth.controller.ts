@@ -189,6 +189,19 @@ class AuthController {
       ...result,
     });
   });
+
+  me = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user?.sub) {
+      throw new ApiError(401, "Unauthorized");
+    }
+
+    const result = await authService.getCurrentUser(req.user.sub);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  });
 }
 
 export const authController = new AuthController();
