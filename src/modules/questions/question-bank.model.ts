@@ -32,6 +32,12 @@ const questionBankQuestionSchema = new Schema(
       required: true,
       trim: true,
     },
+    promptKey: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
     type: {
       type: String,
       enum: QUESTION_TYPES,
@@ -67,5 +73,6 @@ const questionBankQuestionSchema = new Schema(
 
 questionBankQuestionSchema.index({ createdBy: 1, createdAt: -1 });
 questionBankQuestionSchema.index({ createdBy: 1, bankName: 1, createdAt: -1 });
+questionBankQuestionSchema.index({ createdBy: 1, type: 1, promptKey: 1 }, { unique: true });
 
 export const QuestionBankQuestionModel = model("QuestionBankQuestion", questionBankQuestionSchema);

@@ -7,10 +7,25 @@ import type {
 } from "./question-bank.validation";
 
 export class QuestionBankService {
+  private buildPromptKey(prompt: string): string {
+    return prompt.trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
   async create(payload: CreateQuestionInput, adminUserId: string) {
+    const promptKey = this.buildPromptKey(payload.prompt);
+    const exists = await QuestionBankQuestionModel.exists({
+      createdBy: adminUserId,
+      type: payload.type,
+      promptKey,
+    });
+    if (exists) {
+      throw new ApiError(409, "Same question already exists in question bank");
+    }
+
     const question = await QuestionBankQuestionModel.create({
       bankName: payload.bankName,
       prompt: payload.prompt,
+      promptKey,
       type: payload.type,
       marks: payload.marks,
       negativeMarks: payload.negativeMarks ?? 0,
@@ -105,6 +120,8 @@ export class QuestionBankService {
 
     const nextType = payload.type ?? question.type;
     const nextOptions = payload.options ?? question.options;
+    const nextPrompt = payload.prompt ?? question.prompt;
+    const nextPromptKey = this.buildPromptKey(nextPrompt);
 
     if (nextType === "TEXT" && nextOptions.length > 0) {
       throw new ApiError(400, "TEXT question cannot have options");
@@ -128,8 +145,21 @@ export class QuestionBankService {
       }
     }
 
+    const duplicate = await QuestionBankQuestionModel.exists({
+      _id: { $ne: question._id },
+      createdBy: adminUserId,
+      type: nextType,
+      promptKey: nextPromptKey,
+    });
+    if (duplicate) {
+      throw new ApiError(409, "Same question already exists in question bank");
+    }
+
     if (payload.bankName !== undefined) question.bankName = payload.bankName;
-    if (payload.prompt !== undefined) question.prompt = payload.prompt;
+    if (payload.prompt !== undefined) {
+      question.prompt = payload.prompt;
+    }
+    question.promptKey = nextPromptKey;
     if (payload.type !== undefined) question.type = payload.type;
     if (payload.marks !== undefined) question.marks = payload.marks;
     if (payload.negativeMarks !== undefined) question.negativeMarks = payload.negativeMarks;

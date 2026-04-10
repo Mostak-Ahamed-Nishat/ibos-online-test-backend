@@ -11,6 +11,10 @@ import type {
 } from "./exam.validation";
 
 export class ExamService {
+  private buildPromptKey(prompt: string): string {
+    return prompt.trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
   async createBasicInfo(payload: CreateExamBasicInfoInput, adminUserId: string) {
     const start = new Date(payload.startTime);
     const end = new Date(payload.endTime);
@@ -115,6 +119,16 @@ export class ExamService {
       throw new ApiError(404, "Exam not found");
     }
 
+    const promptKey = this.buildPromptKey(payload.prompt);
+    const repeatedInExam = await ExamQuestionModel.exists({
+      examId,
+      type: payload.type,
+      promptKey,
+    });
+    if (repeatedInExam) {
+      throw new ApiError(409, "Same question is already added to this exam");
+    }
+
     const lastQuestion = await ExamQuestionModel.findOne({ examId })
       .sort({ order: -1 })
       .select({ order: 1 })
@@ -124,6 +138,7 @@ export class ExamService {
     const bankQuestion = await QuestionBankQuestionModel.create({
       bankName: exam.title,
       prompt: payload.prompt,
+      promptKey,
       type: payload.type,
       marks: payload.marks,
       negativeMarks: payload.negativeMarks ?? 0,
@@ -136,6 +151,7 @@ export class ExamService {
       sourceType: "QUESTION_BANK",
       bankQuestionId: bankQuestion._id,
       prompt: payload.prompt,
+      promptKey,
       type: payload.type,
       marks: payload.marks,
       negativeMarks: payload.negativeMarks ?? 0,
@@ -172,6 +188,24 @@ export class ExamService {
       throw new ApiError(404, "Bank question not found");
     }
 
+    const repeatedByBankRef = await ExamQuestionModel.exists({
+      examId,
+      bankQuestionId: bankQuestion._id,
+    });
+    if (repeatedByBankRef) {
+      throw new ApiError(409, "This bank question is already added to this exam");
+    }
+
+    const promptKey = this.buildPromptKey(bankQuestion.prompt);
+    const repeatedByPrompt = await ExamQuestionModel.exists({
+      examId,
+      type: bankQuestion.type,
+      promptKey,
+    });
+    if (repeatedByPrompt) {
+      throw new ApiError(409, "Same question is already added to this exam");
+    }
+
     const lastQuestion = await ExamQuestionModel.findOne({ examId })
       .sort({ order: -1 })
       .select({ order: 1 })
@@ -183,6 +217,7 @@ export class ExamService {
       sourceType: "QUESTION_BANK",
       bankQuestionId: bankQuestion._id,
       prompt: bankQuestion.prompt,
+      promptKey,
       type: bankQuestion.type,
       marks: bankQuestion.marks,
       negativeMarks: bankQuestion.negativeMarks,
@@ -271,6 +306,8 @@ export class ExamService {
 
     const nextType = payload.type ?? question.type;
     const nextOptions = payload.options ?? question.options;
+    const nextPrompt = payload.prompt ?? question.prompt;
+    const nextPromptKey = this.buildPromptKey(nextPrompt);
 
     if (nextType === "TEXT" && nextOptions.length > 0) {
       throw new ApiError(400, "TEXT question cannot have options");
@@ -294,7 +331,18 @@ export class ExamService {
       }
     }
 
+    const duplicateInExam = await ExamQuestionModel.exists({
+      _id: { $ne: question._id },
+      examId,
+      type: nextType,
+      promptKey: nextPromptKey,
+    });
+    if (duplicateInExam) {
+      throw new ApiError(409, "Same question is already added to this exam");
+    }
+
     if (payload.prompt !== undefined) question.prompt = payload.prompt;
+    question.promptKey = nextPromptKey;
     if (payload.type !== undefined) question.type = payload.type;
     if (payload.marks !== undefined) question.marks = payload.marks;
     if (payload.negativeMarks !== undefined) question.negativeMarks = payload.negativeMarks;
@@ -310,6 +358,7 @@ export class ExamService {
         {
           $set: {
             prompt: question.prompt,
+            promptKey: question.promptKey,
             type: question.type,
             marks: question.marks,
             negativeMarks: question.negativeMarks,

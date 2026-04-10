@@ -43,6 +43,12 @@ const examQuestionSchema = new Schema(
       required: true,
       trim: true,
     },
+    promptKey: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
     type: {
       type: String,
       enum: EXAM_QUESTION_TYPES,
@@ -82,5 +88,10 @@ const examQuestionSchema = new Schema(
 
 examQuestionSchema.index({ examId: 1, order: 1 }, { unique: true });
 examQuestionSchema.index({ examId: 1, createdAt: -1 });
+examQuestionSchema.index({ examId: 1, type: 1, promptKey: 1 }, { unique: true });
+examQuestionSchema.index(
+  { examId: 1, bankQuestionId: 1 },
+  { unique: true, partialFilterExpression: { bankQuestionId: { $type: "objectId" } } },
+);
 
 export const ExamQuestionModel = model("ExamQuestion", examQuestionSchema);
