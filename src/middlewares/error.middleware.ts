@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { ApiError } from "../utils/api-error";
+import { sendErrorResponse } from "../utils/send-error-response";
 
 export const errorMiddleware = (
   error: unknown,
@@ -13,8 +14,8 @@ export const errorMiddleware = (
   }
 
   if (error instanceof ZodError) {
-    res.status(400).json({
-      success: false,
+    sendErrorResponse({
+      res,
       statusCode: 400,
       message: "Validation failed",
       errors: error.issues.map((issue) => ({
@@ -26,20 +27,34 @@ export const errorMiddleware = (
   }
 
   if (error instanceof ApiError) {
-    res.status(error.statusCode).json({
-      success: false,
+    sendErrorResponse({
+      res,
       statusCode: error.statusCode,
       message: error.message,
     });
     return;
   }
 
-  res.status(500).json({
-    success: false,
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: number }).code === 11000
+  ) {
+    sendErrorResponse({
+      res,
+      statusCode: 409,
+      message: "Duplicate value found",
+    });
+    return;
+  }
+
+  sendErrorResponse({
+    res,
     statusCode: 500,
     message: "Internal server error",
     ...(process.env.NODE_ENV !== "production" && error instanceof Error
-      ? { error: error.message }
+      ? { stack: error.stack }
       : {}),
   });
 };
