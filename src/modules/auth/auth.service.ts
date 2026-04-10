@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { ApiError } from "../../utils/api-error";
 import { env } from "../../config/env";
+import { isEmailServiceConfigured, sendEmail } from "../../services/email.service";
 import {
   EmailVerificationTokenModel,
   UserModel,
@@ -34,8 +35,12 @@ export class AuthService {
 
   async register(payload: RegisterInput): Promise<{
     message: string;
-    verificationLink: string;
+    verificationLink?: string;
   }> {
+    if (!isEmailServiceConfigured()) {
+      throw new ApiError(500, "Email service is not configured");
+    }
+
     const existingUser = await UserModel.findOne({ email: payload.email }).lean();
     if (existingUser) {
       throw new ApiError(409, "Email already registered");
@@ -66,9 +71,26 @@ export class AuthService {
 
     const verificationLink = `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
 
+    await sendEmail({
+      to: user.email,
+      subject: "Verify your email address",
+      text: `Welcome to iBOS Exam. Verify your email: ${verificationLink}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>Verify your email</h2>
+          <p>Welcome to iBOS Exam. Please verify your email to activate your account.</p>
+          <p>
+            <a href="${verificationLink}" target="_blank" rel="noreferrer">Verify Email</a>
+          </p>
+          <p>If the button does not work, use this link:</p>
+          <p>${verificationLink}</p>
+        </div>
+      `,
+    });
+
     return {
-      message: "Registration successful. Please verify your email before login.",
-      verificationLink,
+      message: "Registration successful. Verification email has been sent.",
+      ...(env.nodeEnv !== "production" ? { verificationLink } : {}),
     };
   }
 
