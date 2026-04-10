@@ -1,8 +1,8 @@
 import { model, Schema } from "mongoose";
 
-const EXAM_QUESTION_TYPES = ["RADIO", "CHECKBOX", "TEXT"] as const;
+const QUESTION_TYPES = ["RADIO", "CHECKBOX", "TEXT"] as const;
 
-const examQuestionOptionSchema = new Schema(
+const questionBankOptionSchema = new Schema(
   {
     text: {
       type: String,
@@ -18,24 +18,13 @@ const examQuestionOptionSchema = new Schema(
   { _id: false },
 );
 
-const examQuestionSchema = new Schema(
+const questionBankQuestionSchema = new Schema(
   {
-    examId: {
-      type: Schema.Types.ObjectId,
-      ref: "Exam",
-      required: true,
-      index: true,
-    },
-    sourceType: {
+    bankName: {
       type: String,
-      enum: ["MANUAL", "QUESTION_BANK"],
-      default: "MANUAL",
       required: true,
-    },
-    bankQuestionId: {
-      type: Schema.Types.ObjectId,
-      ref: "QuestionBankQuestion",
-      default: null,
+      trim: true,
+      maxlength: 120,
       index: true,
     },
     prompt: {
@@ -45,8 +34,9 @@ const examQuestionSchema = new Schema(
     },
     type: {
       type: String,
-      enum: EXAM_QUESTION_TYPES,
+      enum: QUESTION_TYPES,
       required: true,
+      index: true,
     },
     marks: {
       type: Number,
@@ -59,13 +49,8 @@ const examQuestionSchema = new Schema(
       min: 0,
     },
     options: {
-      type: [examQuestionOptionSchema],
+      type: [questionBankOptionSchema],
       default: [],
-    },
-    order: {
-      type: Number,
-      required: true,
-      min: 1,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
@@ -80,7 +65,7 @@ const examQuestionSchema = new Schema(
   },
 );
 
-examQuestionSchema.index({ examId: 1, order: 1 }, { unique: true });
-examQuestionSchema.index({ examId: 1, createdAt: -1 });
+questionBankQuestionSchema.index({ createdBy: 1, createdAt: -1 });
+questionBankQuestionSchema.index({ createdBy: 1, bankName: 1, createdAt: -1 });
 
-export const ExamQuestionModel = model("ExamQuestion", examQuestionSchema);
+export const QuestionBankQuestionModel = model("QuestionBankQuestion", questionBankQuestionSchema);

@@ -48,6 +48,15 @@ export const examIdParamSchema = z.object({
   examId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid exam id"),
 });
 
+export const examQuestionIdParamSchema = z.object({
+  examId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid exam id"),
+  questionId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid question id"),
+});
+
+export const addQuestionFromBankSchema = z.object({
+  bankQuestionId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid bank question id"),
+});
+
 const questionOptionSchema = z.object({
   text: z.string().trim().min(1).max(1000),
   isCorrect: z.boolean(),
@@ -101,3 +110,70 @@ export const addExamQuestionSchema = z
 
 export type ExamIdParamInput = z.infer<typeof examIdParamSchema>;
 export type AddExamQuestionInput = z.infer<typeof addExamQuestionSchema>;
+
+export const updateExamQuestionSchema = z
+  .object({
+    prompt: z.string().trim().min(1).optional(),
+    type: z.preprocess(normalizeEnumInput, z.enum(["RADIO", "CHECKBOX", "TEXT"])).optional(),
+    marks: z.number().min(0).optional(),
+    negativeMarks: z.number().min(0).optional(),
+    options: z.array(questionOptionSchema).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.prompt === undefined &&
+      value.type === undefined &&
+      value.marks === undefined &&
+      value.negativeMarks === undefined &&
+      value.options === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: [],
+        message: "At least one field is required for update",
+      });
+      return;
+    }
+
+    const resolvedType = value.type;
+    const resolvedOptions = value.options;
+
+    if (resolvedType === "TEXT" && resolvedOptions && resolvedOptions.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: "TEXT question cannot have options",
+      });
+    }
+
+    if ((resolvedType === "RADIO" || resolvedType === "CHECKBOX") && resolvedOptions) {
+      if (resolvedOptions.length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["options"],
+          message: "At least 2 options are required",
+        });
+      }
+
+      const correctCount = resolvedOptions.filter((option) => option.isCorrect).length;
+      if (resolvedType === "RADIO" && correctCount !== 1) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["options"],
+          message: "RADIO question must have exactly one correct option",
+        });
+      }
+
+      if (resolvedType === "CHECKBOX" && correctCount < 1) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["options"],
+          message: "CHECKBOX question must have at least one correct option",
+        });
+      }
+    }
+  });
+
+export type ExamQuestionIdParamInput = z.infer<typeof examQuestionIdParamSchema>;
+export type UpdateExamQuestionInput = z.infer<typeof updateExamQuestionSchema>;
+export type AddQuestionFromBankInput = z.infer<typeof addQuestionFromBankSchema>;

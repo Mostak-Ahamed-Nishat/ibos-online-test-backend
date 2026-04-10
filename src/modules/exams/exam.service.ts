@@ -1,10 +1,13 @@
 import { ApiError } from "../../utils/api-error";
 import { ExamModel } from "./exam.model";
 import { ExamQuestionModel } from "./exam-question.model";
+import { QuestionBankQuestionModel } from "../questions/question-bank.model";
 import type {
+  AddQuestionFromBankInput,
   AddExamQuestionInput,
   CreateExamBasicInfoInput,
   ListExamQueryInput,
+  UpdateExamQuestionInput,
 } from "./exam.validation";
 
 export class ExamService {
@@ -118,8 +121,20 @@ export class ExamService {
       .lean();
     const nextOrder = (lastQuestion?.order ?? 0) + 1;
 
+    const bankQuestion = await QuestionBankQuestionModel.create({
+      bankName: exam.title,
+      prompt: payload.prompt,
+      type: payload.type,
+      marks: payload.marks,
+      negativeMarks: payload.negativeMarks ?? 0,
+      options: payload.options,
+      createdBy: adminUserId,
+    });
+
     const question = await ExamQuestionModel.create({
       examId,
+      sourceType: "QUESTION_BANK",
+      bankQuestionId: bankQuestion._id,
       prompt: payload.prompt,
       type: payload.type,
       marks: payload.marks,
@@ -132,6 +147,55 @@ export class ExamService {
     return {
       id: String(question._id),
       examId: String(question.examId),
+      sourceType: question.sourceType,
+      bankQuestionId: question.bankQuestionId ? String(question.bankQuestionId) : null,
+      prompt: question.prompt,
+      type: question.type,
+      marks: question.marks,
+      negativeMarks: question.negativeMarks,
+      options: question.options,
+      order: question.order,
+    };
+  }
+
+  async addQuestionFromBank(payload: AddQuestionFromBankInput, examId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId }).lean();
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    const bankQuestion = await QuestionBankQuestionModel.findOne({
+      _id: payload.bankQuestionId,
+      createdBy: adminUserId,
+    }).lean();
+    if (!bankQuestion) {
+      throw new ApiError(404, "Bank question not found");
+    }
+
+    const lastQuestion = await ExamQuestionModel.findOne({ examId })
+      .sort({ order: -1 })
+      .select({ order: 1 })
+      .lean();
+    const nextOrder = (lastQuestion?.order ?? 0) + 1;
+
+    const question = await ExamQuestionModel.create({
+      examId,
+      sourceType: "QUESTION_BANK",
+      bankQuestionId: bankQuestion._id,
+      prompt: bankQuestion.prompt,
+      type: bankQuestion.type,
+      marks: bankQuestion.marks,
+      negativeMarks: bankQuestion.negativeMarks,
+      options: bankQuestion.options,
+      order: nextOrder,
+      createdBy: adminUserId,
+    });
+
+    return {
+      id: String(question._id),
+      examId: String(question.examId),
+      sourceType: question.sourceType,
+      bankQuestionId: question.bankQuestionId ? String(question.bankQuestionId) : null,
       prompt: question.prompt,
       type: question.type,
       marks: question.marks,
@@ -162,6 +226,128 @@ export class ExamService {
       order: question.order,
       createdAt: question.createdAt,
     }));
+  }
+
+  async getQuestionById(examId: string, questionId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId }).lean();
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    const question = await ExamQuestionModel.findOne({ _id: questionId, examId }).lean();
+    if (!question) {
+      throw new ApiError(404, "Question not found");
+    }
+
+    return {
+      id: String(question._id),
+      examId: String(question.examId),
+      prompt: question.prompt,
+      type: question.type,
+      marks: question.marks,
+      negativeMarks: question.negativeMarks,
+      options: question.options,
+      order: question.order,
+      createdAt: question.createdAt,
+      updatedAt: question.updatedAt,
+    };
+  }
+
+  async updateQuestion(
+    payload: UpdateExamQuestionInput,
+    examId: string,
+    questionId: string,
+    adminUserId: string,
+  ) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId }).lean();
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    const question = await ExamQuestionModel.findOne({ _id: questionId, examId });
+    if (!question) {
+      throw new ApiError(404, "Question not found");
+    }
+
+    const nextType = payload.type ?? question.type;
+    const nextOptions = payload.options ?? question.options;
+
+    if (nextType === "TEXT" && nextOptions.length > 0) {
+      throw new ApiError(400, "TEXT question cannot have options");
+    }
+
+    if ((nextType === "RADIO" || nextType === "CHECKBOX") && nextOptions.length < 2) {
+      throw new ApiError(400, "At least 2 options are required");
+    }
+
+    if (nextType === "RADIO") {
+      const correctCount = nextOptions.filter((option) => option.isCorrect).length;
+      if (correctCount !== 1) {
+        throw new ApiError(400, "RADIO question must have exactly one correct option");
+      }
+    }
+
+    if (nextType === "CHECKBOX") {
+      const correctCount = nextOptions.filter((option) => option.isCorrect).length;
+      if (correctCount < 1) {
+        throw new ApiError(400, "CHECKBOX question must have at least one correct option");
+      }
+    }
+
+    if (payload.prompt !== undefined) question.prompt = payload.prompt;
+    if (payload.type !== undefined) question.type = payload.type;
+    if (payload.marks !== undefined) question.marks = payload.marks;
+    if (payload.negativeMarks !== undefined) question.negativeMarks = payload.negativeMarks;
+    if (payload.options !== undefined) {
+      question.set("options", payload.options);
+    }
+
+    await question.save();
+
+    if (question.bankQuestionId) {
+      await QuestionBankQuestionModel.updateOne(
+        { _id: question.bankQuestionId, createdBy: adminUserId },
+        {
+          $set: {
+            prompt: question.prompt,
+            type: question.type,
+            marks: question.marks,
+            negativeMarks: question.negativeMarks,
+            options: question.options,
+          },
+        },
+      );
+    }
+
+    return {
+      id: String(question._id),
+      examId: String(question.examId),
+      sourceType: question.sourceType,
+      bankQuestionId: question.bankQuestionId ? String(question.bankQuestionId) : null,
+      prompt: question.prompt,
+      type: question.type,
+      marks: question.marks,
+      negativeMarks: question.negativeMarks,
+      options: question.options,
+      order: question.order,
+      updatedAt: question.updatedAt,
+    };
+  }
+
+  async deleteQuestion(examId: string, questionId: string, adminUserId: string) {
+    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId }).lean();
+    if (!exam) {
+      throw new ApiError(404, "Exam not found");
+    }
+
+    const question = await ExamQuestionModel.findOneAndDelete({ _id: questionId, examId });
+    if (!question) {
+      throw new ApiError(404, "Question not found");
+    }
+
+    return {
+      id: String(question._id),
+    };
   }
 }
 
