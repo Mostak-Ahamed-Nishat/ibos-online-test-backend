@@ -29,12 +29,15 @@ import {
 import { auditAuthEvent } from "./auth-audit.service";
 import {
   createRefreshToken,
-  findActiveRefreshToken,
   revokeAllActiveRefreshTokens,
-  revokeSingleRefreshToken,
-  rotateRefreshToken,
 } from "./auth-session.service";
 import { generateUniqueStudentId, hashToken, type RequestMeta } from "./auth.util";
+import {
+  getCurrentUserPayload,
+  handleLogout,
+  handleLogoutAll,
+  handleRefreshToken,
+} from "./auth.service.helpers";
 
 export class AuthService {
   private readonly resendCooldownMs = 3 * 60 * 1000;
@@ -307,98 +310,26 @@ export class AuthService {
       expiresIn: number;
     };
   }> {
-    const existingToken = await findActiveRefreshToken(payload.refreshToken);
-
-    if (!existingToken) {
-      await auditAuthEvent({
-        action: "auth.refresh.failed",
-        metadata: { reason: "invalid_or_expired_token" },
-        requestMeta,
-      });
-      throw new ApiError(401, "Invalid or expired refresh token");
-    }
-
-    const user = await UserModel.findById(existingToken.userId);
-    if (!user || user.status !== "ACTIVE") {
-      await auditAuthEvent({
-        action: "auth.refresh.failed",
-        actorUserId: user ? String(user._id) : null,
-        metadata: { reason: "user_not_found_or_inactive" },
-        requestMeta,
-      });
-      throw new ApiError(401, "User not found or inactive");
-    }
-
-    if (user.role === "CANDIDATE" && !user.isEmailVerified) {
-      await auditAuthEvent({
-        action: "auth.refresh.failed",
-        actorUserId: String(user._id),
-        metadata: { reason: "email_not_verified" },
-        requestMeta,
-      });
-      throw new ApiError(403, "Please verify your email before login");
-    }
-
-    const { accessToken } = this.issueTokenPair(user);
-    const newRefreshToken = await rotateRefreshToken(String(existingToken._id), String(user._id));
-
-    await auditAuthEvent({
-      action: "auth.refresh.success",
-      actorUserId: String(user._id),
+    return handleRefreshToken({
+      payload,
       requestMeta,
+      issueTokenPair: (user) => this.issueTokenPair(user),
+      accessTokenExpiresInSeconds: this.accessTokenExpiresInSeconds,
     });
-
-    return {
-      message: "Token refreshed successfully",
-      tokens: {
-        accessToken,
-        refreshToken: newRefreshToken,
-        tokenType: "Bearer",
-        expiresIn: this.accessTokenExpiresInSeconds,
-      },
-    };
   }
 
   async logout(
     payload: LogoutInput,
     requestMeta?: RequestMeta,
   ): Promise<{ message: string }> {
-    const existingToken = await findActiveRefreshToken(payload.refreshToken);
-
-    if (!existingToken) {
-      return { message: "Logout successful" };
-    }
-
-    await revokeSingleRefreshToken(String(existingToken._id));
-
-    await auditAuthEvent({
-      action: "auth.logout.success",
-      actorUserId: String(existingToken.userId),
-      requestMeta,
-    });
-
-    return { message: "Logout successful" };
+    return handleLogout(payload, requestMeta);
   }
 
   async logoutAll(
     payload: LogoutAllInput,
     requestMeta?: RequestMeta,
   ): Promise<{ message: string }> {
-    const existingToken = await findActiveRefreshToken(payload.refreshToken);
-
-    if (!existingToken) {
-      return { message: "Logout successful from all devices" };
-    }
-
-    await revokeAllActiveRefreshTokens(String(existingToken.userId), new Date());
-
-    await auditAuthEvent({
-      action: "auth.logout_all.success",
-      actorUserId: String(existingToken.userId),
-      requestMeta,
-    });
-
-    return { message: "Logout successful from all devices" };
+    return handleLogoutAll(payload, requestMeta);
   }
 
   async getCurrentUser(userId: string): Promise<{
@@ -410,21 +341,7 @@ export class AuthService {
     isEmailVerified: boolean;
     status: "ACTIVE" | "SUSPENDED";
   }> {
-    const user = await UserModel.findById(userId).lean();
-
-    if (!user) {
-      throw new ApiError(404, "User not found");
-    }
-
-    return {
-      id: String(user._id),
-      studentId: user.studentId,
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
-      isEmailVerified: user.isEmailVerified,
-      status: user.status,
-    };
+    return getCurrentUserPayload(userId);
   }
 }
 

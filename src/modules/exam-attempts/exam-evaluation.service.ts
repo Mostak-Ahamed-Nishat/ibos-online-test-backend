@@ -1,125 +1,26 @@
 import { Types } from "mongoose";
 import { ApiError } from "../../utils/api-error";
 import { UserModel } from "../auth/models/user.model";
-import { ExamModel } from "../exams/exam.model";
 import { ExamQuestionModel } from "../exams/exam-question.model";
 import { ExamAttemptAnswerModel } from "./exam-answer.model";
 import { ExamAttemptModel } from "./exam-attempt.model";
+import {
+  ensureExamOwnership,
+  getAttemptOrThrow,
+  syncAttemptScoresAndStatus,
+} from "./exam-evaluation.helpers";
 import type { GradeTextAnswersInput, ListAttemptQueryInput } from "./exam-evaluation.validation";
 
 export class ExamEvaluationService {
-  private async ensureExamOwnership(examId: string, adminUserId: string) {
-    const exam = await ExamModel.findOne({ _id: examId, createdBy: adminUserId })
-      .select({ _id: 1 })
-      .lean();
-    if (!exam) {
-      throw new ApiError(404, "Exam not found");
-    }
-    return exam;
-  }
-
-  private async getAttemptOrThrow(examId: string, attemptId: string) {
-    const attempt = await ExamAttemptModel.findOne({ _id: attemptId, examId });
-    if (!attempt) {
-      throw new ApiError(404, "Attempt not found");
-    }
-    return attempt;
-  }
-
-  private async calculateAttemptProgress(examId: string, attemptId: string) {
-    const [questions, answers] = await Promise.all([
-      ExamQuestionModel.find({ examId }).select({ _id: 1, type: 1 }).lean(),
-      ExamAttemptAnswerModel.find({ attemptId })
-        .select({
-          questionId: 1,
-          status: 1,
-          answerText: 1,
-          objectiveAwardedMarks: 1,
-          manualAwardedMarks: 1,
-          isManualEvaluated: 1,
-        })
-        .lean(),
-    ]);
-
-    const questionTypeMap = new Map<string, "RADIO" | "CHECKBOX" | "TEXT">(
-      questions.map((question) => [String(question._id), question.type]),
-    );
-
-    let objectiveScore = 0;
-    let textScore = 0;
-    let pendingTextEvaluationCount = 0;
-
-    for (const answer of answers) {
-      const questionType = questionTypeMap.get(String(answer.questionId));
-      if (!questionType) {
-        continue;
-      }
-
-      if (questionType === "TEXT") {
-        const hasTextAnswer =
-          answer.status === "ANSWERED" &&
-          typeof answer.answerText === "string" &&
-          answer.answerText.trim().length > 0;
-        if (hasTextAnswer && !answer.isManualEvaluated) {
-          pendingTextEvaluationCount += 1;
-        }
-        if (hasTextAnswer && answer.isManualEvaluated) {
-          textScore += answer.manualAwardedMarks ?? 0;
-        }
-      } else {
-        objectiveScore += answer.objectiveAwardedMarks ?? 0;
-      }
-    }
-
-    return {
-      objectiveScore,
-      textScore,
-      totalScore: objectiveScore + textScore,
-      pendingTextEvaluationCount,
-    };
-  }
-
-  private async syncAttemptScoresAndStatus(attempt: any, examId: string, publishNow = false) {
-    const progress = await this.calculateAttemptProgress(examId, String(attempt._id));
-
-    attempt.objectiveScore = progress.objectiveScore;
-    attempt.textScore = progress.textScore;
-    attempt.totalScore = progress.totalScore;
-
-    if (progress.pendingTextEvaluationCount > 0) {
-      attempt.resultStatus = "PENDING_EVALUATION";
-      attempt.publishedAt = null;
-    } else if (publishNow) {
-      attempt.resultStatus = "PUBLISHED";
-      attempt.publishedAt = new Date();
-    } else if (attempt.resultStatus !== "PUBLISHED") {
-      attempt.resultStatus = "READY";
-      attempt.publishedAt = null;
-    }
-
-    await attempt.save();
-
-    return {
-      objectiveScore: attempt.objectiveScore,
-      textScore: attempt.textScore,
-      totalScore: attempt.totalScore,
-      pendingTextEvaluationCount: progress.pendingTextEvaluationCount,
-      resultStatus: attempt.resultStatus,
-      publishedAt: attempt.publishedAt,
-    };
-  }
-
   async listAttempts(query: ListAttemptQueryInput, examId: string, adminUserId: string) {
-    await this.ensureExamOwnership(examId, adminUserId);
+    await ensureExamOwnership(examId, adminUserId);
 
     const page = query.page;
     const limit = query.limit;
     const skip = (page - 1) * limit;
     const searchValue = query.search.trim();
 
-    const baseMatch: Record<string, unknown> = {
-      examId: new Types.ObjectId(examId),
-    };
+    const baseMatch: Record<string, unknown> = { examId: new Types.ObjectId(examId) };
     if (query.resultStatus) {
       baseMatch.resultStatus = query.resultStatus;
     }
@@ -184,19 +85,11 @@ export class ExamEvaluationService {
 
     const breakdown = await ExamAttemptModel.aggregate([
       { $match: { examId: new Types.ObjectId(examId), status: "SUBMITTED" } },
-      {
-        $group: {
-          _id: "$resultStatus",
-          count: { $sum: 1 },
-        },
-      },
+      { $group: { _id: "$resultStatus", count: { $sum: 1 } } },
     ]);
 
     const summary = {
-      submittedCount: await ExamAttemptModel.countDocuments({
-        examId,
-        status: "SUBMITTED",
-      }),
+      submittedCount: await ExamAttemptModel.countDocuments({ examId, status: "SUBMITTED" }),
       pendingEvaluationCount:
         breakdown.find((item) => item._id === "PENDING_EVALUATION")?.count ?? 0,
       readyCount: breakdown.find((item) => item._id === "READY")?.count ?? 0,
@@ -206,18 +99,13 @@ export class ExamEvaluationService {
     return {
       items,
       summary,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages,
-      },
+      pagination: { total, page, limit, totalPages },
     };
   }
 
   async getAttemptDetail(examId: string, attemptId: string, adminUserId: string) {
-    await this.ensureExamOwnership(examId, adminUserId);
-    const attempt = await this.getAttemptOrThrow(examId, attemptId);
+    await ensureExamOwnership(examId, adminUserId);
+    const attempt = await getAttemptOrThrow(examId, attemptId);
 
     const [candidate, questions, answers] = await Promise.all([
       UserModel.findById(attempt.candidateId).select({ studentId: 1, fullName: 1, email: 1 }).lean(),
@@ -298,8 +186,8 @@ export class ExamEvaluationService {
     attemptId: string,
     adminUserId: string,
   ) {
-    await this.ensureExamOwnership(examId, adminUserId);
-    const attempt = await this.getAttemptOrThrow(examId, attemptId);
+    await ensureExamOwnership(examId, adminUserId);
+    const attempt = await getAttemptOrThrow(examId, attemptId);
 
     if (attempt.status !== "SUBMITTED") {
       throw new ApiError(409, "Only submitted attempts can be evaluated");
@@ -361,21 +249,20 @@ export class ExamEvaluationService {
       await Promise.all(ops.map((op) => op.exec()));
     }
 
-    const score = await this.syncAttemptScoresAndStatus(attempt, examId, false);
     return {
       attemptId: String(attempt._id),
-      ...score,
+      ...(await syncAttemptScoresAndStatus(attempt, examId, false)),
     };
   }
 
   async markEvaluated(examId: string, attemptId: string, adminUserId: string) {
-    await this.ensureExamOwnership(examId, adminUserId);
-    const attempt = await this.getAttemptOrThrow(examId, attemptId);
+    await ensureExamOwnership(examId, adminUserId);
+    const attempt = await getAttemptOrThrow(examId, attemptId);
     if (attempt.status !== "SUBMITTED") {
       throw new ApiError(409, "Only submitted attempts can be evaluated");
     }
-    const score = await this.syncAttemptScoresAndStatus(attempt, examId, false);
 
+    const score = await syncAttemptScoresAndStatus(attempt, examId, false);
     if (score.pendingTextEvaluationCount > 0) {
       throw new ApiError(409, "Text answers are still pending evaluation");
     }
@@ -387,13 +274,13 @@ export class ExamEvaluationService {
   }
 
   async publishAttempt(examId: string, attemptId: string, adminUserId: string) {
-    await this.ensureExamOwnership(examId, adminUserId);
-    const attempt = await this.getAttemptOrThrow(examId, attemptId);
+    await ensureExamOwnership(examId, adminUserId);
+    const attempt = await getAttemptOrThrow(examId, attemptId);
     if (attempt.status !== "SUBMITTED") {
       throw new ApiError(409, "Only submitted attempts can be published");
     }
-    const score = await this.syncAttemptScoresAndStatus(attempt, examId, true);
 
+    const score = await syncAttemptScoresAndStatus(attempt, examId, true);
     if (score.pendingTextEvaluationCount > 0) {
       throw new ApiError(409, "Text answers are still pending evaluation");
     }
@@ -406,7 +293,7 @@ export class ExamEvaluationService {
   }
 
   async publishAllReady(examId: string, adminUserId: string) {
-    await this.ensureExamOwnership(examId, adminUserId);
+    await ensureExamOwnership(examId, adminUserId);
 
     const readyAttempts = await ExamAttemptModel.find({
       examId,
@@ -415,9 +302,7 @@ export class ExamEvaluationService {
     });
 
     if (readyAttempts.length === 0) {
-      return {
-        publishedCount: 0,
-      };
+      return { publishedCount: 0 };
     }
 
     for (const attempt of readyAttempts) {
