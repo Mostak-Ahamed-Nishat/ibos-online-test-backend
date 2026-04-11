@@ -72,6 +72,7 @@ export const sendEmail = async ({
 
     return address.address.trim().toLowerCase();
   });
+
   const normalizedTo = to.trim().toLowerCase();
   const noAcceptedRecipients = info.accepted.length === 0;
   const targetRecipientRejected = rejected.includes(normalizedTo);

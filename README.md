@@ -92,16 +92,11 @@ ACCESS_TOKEN_SECRET=change_this_to_a_long_random_secret
 ACCESS_TOKEN_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_IN_DAYS=30
 REFRESH_TOKEN_COOKIE_NAME=refreshToken
-
-API_RATE_LIMIT_WINDOW_MS=60000
-API_RATE_LIMIT_MAX=300
-
-SMTP_HOST=sandbox.smtp.mailtrap.io
-SMTP_PORT=2525
-SMTP_USER=your_mailtrap_username
-SMTP_PASS=your_mailtrap_password
-SMTP_FROM="iBOS Exam <no-reply@example.com>"
-
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USER=a7cd5d001@smtp-brevo.com
+SMTP_PASS=your_brevo_smtp_key
+SMTP_FROM="iBOS Exam Verification <no-reply@yourdomain.com>"
 ADMIN_SEED_EMAIL=admin@example.com
 ADMIN_SEED_PASSWORD=ChangeThisAdminPassword123!
 ADMIN_SEED_FULL_NAME=System Admin
@@ -109,27 +104,30 @@ ADMIN_SEED_STUDENT_ID=ADM001
 ```
 
 Important:
-- `sandbox.smtp.mailtrap.io` is test-only and does not deliver to real inboxes.
-- For real delivery, use a production SMTP provider (for example Gmail SMTP, Brevo, SendGrid SMTP relay, Mailgun SMTP).
-- Set a valid sender format in `SMTP_FROM`, example: `iBOS Exam <no-reply@yourdomain.com>`.
+- Use your Brevo SMTP key in `SMTP_PASS`.
+- Use a valid sender format for `SMTP_FROM`, for example: `iBOS Exam Verification <no-reply@yourdomain.com>`.
 
-Test SMTP quickly:
-
+SMTP check command:
 ```bash
 npm run test:email -- your-email@example.com
 ```
 
 ## Scripts
+- `npm run dev` - Start development server
+- `npm run build` - Build TypeScript to `dist/`
+- `npm run start` - Run production build
+- `npm run seed:admin` - Create/update admin from env values
+- `npm run test:email -- your-email@example.com` - Send a direct SMTP test email
 
-- `npm run dev` - start dev server with watch
-- `npm run build` - build TypeScript
-- `npm run start` - run compiled build
-- `npm run seed:admin` - create/update admin user from env
-
-## API Base
-
-- Local: `http://localhost:5000/api`
-- Health: `GET /api/health`
+## Core Endpoints
+- `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/refresh-token`
+- `POST /api/auth/logout`
+- `POST /api/auth/logout-all`
+- `GET /api/admin/dashboard` (ADMIN only)
 
 ## Database Design
 
