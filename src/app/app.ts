@@ -10,6 +10,16 @@ import { apiLimiter } from "../middlewares/rate-limit.middleware";
 import { router } from "../routes";
 
 const app = express();
+const normalizeOrigin = (value: string): string => {
+  return value.trim().replace(/\/+$/, "").toLowerCase();
+};
+
+const configuredCorsOrigins = env.corsOrigins.map(normalizeOrigin);
+const normalizedFrontendOrigin = normalizeOrigin(env.appFrontendUrl);
+const allowedOrigins =
+  configuredCorsOrigins.length > 0
+    ? new Set([...configuredCorsOrigins, normalizedFrontendOrigin])
+    : null;
 
 app.use(helmet());
 app.disable("x-powered-by");
@@ -22,12 +32,21 @@ app.use(
         return;
       }
 
-      if (env.corsOrigins.length === 0 || env.corsOrigins.includes(origin)) {
+      if (!allowedOrigins) {
         callback(null, true);
         return;
       }
 
-      callback(new Error("Not allowed by CORS"));
+      if (allowedOrigins.has(normalizeOrigin(origin))) {
+        callback(null, true);
+        return;
+      }
+
+      callback(
+        new Error(
+          `Not allowed by CORS. Origin "${origin}" is not in CORS_ORIGINS or APP_FRONTEND_URL`,
+        ),
+      );
     },
     credentials: true,
   }),
