@@ -16,6 +16,18 @@ import type {
 } from "./auth.validation";
 
 class AuthController {
+  private getRefreshTokenCookieOptions() {
+    const isProduction = env.nodeEnv === "production";
+
+    return {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: (isProduction ? "none" : "lax") as "none" | "lax",
+      path: "/api/auth",
+      maxAge: env.refreshTokenExpiresInDays * 24 * 60 * 60 * 1000,
+    };
+  }
+
   private getRequestMeta(req: Request) {
     return {
       ipAddress: req.ip,
@@ -24,28 +36,28 @@ class AuthController {
   }
 
   private setRefreshTokenCookie(res: Response, refreshToken: string): void {
-    res.cookie(env.refreshTokenCookieName, refreshToken, {
-      httpOnly: true,
-      secure: env.nodeEnv === "production",
-      sameSite: "lax",
-      path: "/api/auth",
-      maxAge: env.refreshTokenExpiresInDays * 24 * 60 * 60 * 1000,
-    });
+    res.cookie(env.refreshTokenCookieName, refreshToken, this.getRefreshTokenCookieOptions());
   }
 
   private clearRefreshTokenCookie(res: Response): void {
+    const options = this.getRefreshTokenCookieOptions();
     res.clearCookie(env.refreshTokenCookieName, {
-      httpOnly: true,
-      secure: env.nodeEnv === "production",
-      sameSite: "lax",
-      path: "/api/auth",
+      httpOnly: options.httpOnly,
+      secure: options.secure,
+      sameSite: options.sameSite,
+      path: options.path,
     });
   }
 
   private getRefreshTokenFromRequest(req: Request): string | null {
     const cookieToken = req.cookies?.[env.refreshTokenCookieName];
     const bodyToken = (req.body as Partial<RefreshTokenInput>)?.refreshToken;
-    const token = cookieToken || bodyToken;
+    const authHeader = req.get("authorization");
+    const bearerToken =
+      authHeader && authHeader.startsWith("Bearer ")
+        ? authHeader.replace("Bearer ", "").trim()
+        : null;
+    const token = cookieToken || bodyToken || bearerToken;
 
     if (typeof token !== "string") {
       return null;

@@ -59,7 +59,7 @@ export class ExamService {
       immediateResultPublish: payload.immediateResultPublish,
       maxViolationLimit: payload.maxViolationLimit,
       passThreshold: payload.passThreshold,
-      status: "DRAFT",
+      status: "PUBLISHED",
       createdBy: adminUserId,
     });
 

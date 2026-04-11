@@ -75,7 +75,10 @@ export class ExamAttemptService {
     });
 
     if (usedAttempts >= exam.attemptLimit) {
-      throw new ApiError(409, "Maximum attempt limit reached");
+      if (exam.attemptLimit === 1) {
+        throw new ApiError(409, "You already attempted this exam");
+      }
+      throw new ApiError(409, "You have reached the maximum attempt limit for this exam");
     }
 
     const expiresAt = new Date(now.getTime() + exam.durationMinutes * 60 * 1000);

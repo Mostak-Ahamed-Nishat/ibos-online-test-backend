@@ -72,7 +72,7 @@ const examSchema = new Schema(
     status: {
       type: String,
       enum: EXAM_STATUSES,
-      default: "DRAFT",
+      default: "PUBLISHED",
       index: true,
     },
     createdBy: {
