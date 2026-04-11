@@ -34,6 +34,9 @@ export class ExamCandidateService {
           startTime: 1,
           endTime: 1,
           attemptLimit: 1,
+          immediateResultPublish: 1,
+          maxViolationLimit: 1,
+          passThreshold: 1,
         })
         .lean(),
       ExamModel.countDocuments(filter),
@@ -52,6 +55,9 @@ export class ExamCandidateService {
         startTime: exam.startTime,
         endTime: exam.endTime,
         attemptLimit: exam.attemptLimit,
+        immediateResultPublish: exam.immediateResultPublish,
+        maxViolationLimit: exam.maxViolationLimit,
+        passThreshold: exam.passThreshold,
         availabilityStatus,
       };
     });
@@ -79,6 +85,9 @@ export class ExamCandidateService {
         startTime: 1,
         endTime: 1,
         attemptLimit: 1,
+        immediateResultPublish: 1,
+        maxViolationLimit: 1,
+        passThreshold: 1,
         status: 1,
       })
       .lean();
@@ -99,6 +108,9 @@ export class ExamCandidateService {
       startTime: exam.startTime,
       endTime: exam.endTime,
       attemptLimit: exam.attemptLimit,
+      immediateResultPublish: exam.immediateResultPublish,
+      maxViolationLimit: exam.maxViolationLimit,
+      passThreshold: exam.passThreshold,
       instructions: [
         "Read all questions carefully before submitting.",
         "Do not refresh the page during the exam session.",

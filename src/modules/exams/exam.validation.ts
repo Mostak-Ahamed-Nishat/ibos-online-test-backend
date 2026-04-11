@@ -21,6 +21,9 @@ export const createExamBasicInfoSchema = z
     endTime: z.iso.datetime(),
     durationMinutes: z.number().int().min(1),
     attemptLimit: z.number().int().min(1).optional().default(1),
+    immediateResultPublish: z.boolean().optional().default(false),
+    maxViolationLimit: z.number().int().min(1).max(20).optional().default(3),
+    passThreshold: z.number().min(0).max(100).optional().default(40),
   })
   .superRefine((value, ctx) => {
     const start = new Date(value.startTime).getTime();
@@ -125,6 +128,9 @@ export const updateExamBasicInfoSchema = z
     endTime: z.iso.datetime().optional(),
     durationMinutes: z.number().int().min(1).optional(),
     attemptLimit: z.number().int().min(1).optional(),
+    immediateResultPublish: z.boolean().optional(),
+    maxViolationLimit: z.number().int().min(1).max(20).optional(),
+    passThreshold: z.number().min(0).max(100).optional(),
   })
   .superRefine((value, ctx) => {
     if (
@@ -136,7 +142,10 @@ export const updateExamBasicInfoSchema = z
       value.startTime === undefined &&
       value.endTime === undefined &&
       value.durationMinutes === undefined &&
-      value.attemptLimit === undefined
+      value.attemptLimit === undefined &&
+      value.immediateResultPublish === undefined &&
+      value.maxViolationLimit === undefined &&
+      value.passThreshold === undefined
     ) {
       ctx.addIssue({
         code: "custom",

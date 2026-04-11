@@ -51,6 +51,24 @@ const examSchema = new Schema(
       min: 1,
       default: 1,
     },
+    immediateResultPublish: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    maxViolationLimit: {
+      type: Number,
+      required: true,
+      min: 1,
+      default: 3,
+    },
+    passThreshold: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100,
+      default: 40,
+    },
     status: {
       type: String,
       enum: EXAM_STATUSES,
