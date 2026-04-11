@@ -290,6 +290,7 @@ class AuthController {
     }
 
     const result = await authService.getCurrentUser(req.user.sub);
+    res.setHeader("Cache-Control", "no-store");
 
     res.status(200).json({
       success: true,

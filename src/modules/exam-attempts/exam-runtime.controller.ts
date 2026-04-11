@@ -16,6 +16,7 @@ class ExamRuntimeController {
 
     const params = req.params as unknown as ExamIdParamInput;
     const result = await examRuntimeService.getCurrentQuestion(params.examId, req.user.sub);
+    res.setHeader("Cache-Control", "no-store");
 
     res.status(200).json({
       success: true,
@@ -47,6 +48,7 @@ class ExamRuntimeController {
 
     const params = req.params as unknown as ExamIdParamInput;
     const result = await examRuntimeService.getNavigation(params.examId, req.user.sub);
+    res.setHeader("Cache-Control", "no-store");
 
     res.status(200).json({
       success: true,
@@ -62,6 +64,7 @@ class ExamRuntimeController {
 
     const params = req.params as unknown as ExamIdParamInput;
     const result = await examRuntimeService.getReview(params.examId, req.user.sub);
+    res.setHeader("Cache-Control", "no-store");
 
     res.status(200).json({
       success: true,
@@ -123,6 +126,7 @@ class ExamRuntimeController {
 
     const params = req.params as unknown as ExamIdParamInput;
     const result = await examRuntimeService.getOfflineSyncState(params.examId, req.user.sub);
+    res.setHeader("Cache-Control", "no-store");
 
     res.status(200).json({
       success: true,

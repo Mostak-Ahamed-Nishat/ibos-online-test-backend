@@ -22,6 +22,7 @@ class ExamController {
 
     const query = req.query as unknown as ListExamQueryInput;
     const result = await examService.listExams(query, req.user.sub);
+    res.setHeader("Cache-Control", "private, max-age=30, stale-while-revalidate=30");
 
     res.status(200).json({
       success: true,

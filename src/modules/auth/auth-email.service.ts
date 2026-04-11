@@ -38,10 +38,10 @@ export const createPasswordResetToken = async (userId: string): Promise<string> 
 };
 
 export const buildVerificationLink = (rawToken: string): string =>
-  `${env.appBaseUrl}/api/auth/verify-email?token=${rawToken}`;
+  `${env.appBaseUrl.replace(/\/+$/, "")}/api/auth/verify-email?token=${rawToken}`;
 
 export const buildResetLink = (rawToken: string): string =>
-  `${env.appFrontendUrl}/reset-password?token=${rawToken}`;
+  `${env.appFrontendUrl.replace(/\/+$/, "")}/reset-password?token=${rawToken}`;
 
 export const sendVerificationEmail = async (to: string, verificationLink: string): Promise<void> => {
   await sendEmail({
@@ -74,14 +74,6 @@ export const sendVerificationEmail = async (to: string, verificationLink: string
               >
                 Verify iBOS Account
               </a>
-              <p style="margin: 24px 0 0; font-size: 13px; line-height: 1.6; color: #64748b;">
-                If the button does not work, copy and open this link in your browser:
-              </p>
-              <p style="margin: 8px 0 0; font-size: 13px; word-break: break-all;">
-                <a href="${verificationLink}" target="_blank" rel="noreferrer" style="color: #1d4ed8; text-decoration: underline;">
-                  ${verificationLink}
-                </a>
-              </p>
             </td>
           </tr>
         </table>
