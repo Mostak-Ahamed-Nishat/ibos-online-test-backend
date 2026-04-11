@@ -29,6 +29,9 @@ export class ExamService {
       endTime: exam.endTime,
       durationMinutes: exam.durationMinutes,
       attemptLimit: exam.attemptLimit,
+      immediateResultPublish: exam.immediateResultPublish,
+      maxViolationLimit: exam.maxViolationLimit,
+      passThreshold: exam.passThreshold,
       status: exam.status,
       createdAt: exam.createdAt,
       updatedAt: exam.updatedAt,
@@ -53,6 +56,9 @@ export class ExamService {
       endTime: end,
       durationMinutes: payload.durationMinutes,
       attemptLimit: payload.attemptLimit,
+      immediateResultPublish: payload.immediateResultPublish,
+      maxViolationLimit: payload.maxViolationLimit,
+      passThreshold: payload.passThreshold,
       status: "DRAFT",
       createdBy: adminUserId,
     });
@@ -92,6 +98,9 @@ export class ExamService {
           endTime: 1,
           durationMinutes: 1,
           attemptLimit: 1,
+          immediateResultPublish: 1,
+          maxViolationLimit: 1,
+          passThreshold: 1,
           status: 1,
           createdAt: 1,
         })
@@ -148,6 +157,11 @@ export class ExamService {
     if (payload.endTime !== undefined) exam.endTime = nextEnd;
     if (payload.durationMinutes !== undefined) exam.durationMinutes = payload.durationMinutes;
     if (payload.attemptLimit !== undefined) exam.attemptLimit = payload.attemptLimit;
+    if (payload.immediateResultPublish !== undefined) {
+      exam.immediateResultPublish = payload.immediateResultPublish;
+    }
+    if (payload.maxViolationLimit !== undefined) exam.maxViolationLimit = payload.maxViolationLimit;
+    if (payload.passThreshold !== undefined) exam.passThreshold = payload.passThreshold;
 
     await exam.save();
     return this.mapExam(exam.toObject());

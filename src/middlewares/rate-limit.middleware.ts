@@ -1,4 +1,17 @@
 import rateLimit from "express-rate-limit";
+import { env } from "../config/env";
+
+export const apiLimiter = rateLimit({
+  windowMs: env.apiRateLimitWindowMs,
+  limit: env.apiRateLimitMax,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    statusCode: 429,
+    message: "Too many requests. Please slow down.",
+  },
+});
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -24,3 +37,14 @@ export const loginLimiter = rateLimit({
   },
 });
 
+export const candidateExamLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    success: false,
+    statusCode: 429,
+    message: "Too many exam requests. Please try again shortly.",
+  },
+});
