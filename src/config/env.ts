@@ -19,6 +19,11 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional().default(""),
   SMTP_FROM: z.string().optional().default(""),
   CORS_ORIGINS: z.string().optional().default(""),
+  CORS_ALLOW_ALL: z
+    .string()
+    .optional()
+    .default("true")
+    .transform((value) => value.trim().toLowerCase() === "true"),
   API_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).optional().default(60000),
   API_RATE_LIMIT_MAX: z.coerce.number().int().min(10).optional().default(300),
 });
@@ -51,6 +56,7 @@ export const env = {
   smtpPass: envData.SMTP_PASS,
   smtpFrom: envData.SMTP_FROM,
   corsOrigins,
+  corsAllowAll: envData.CORS_ALLOW_ALL,
   apiRateLimitWindowMs: envData.API_RATE_LIMIT_WINDOW_MS,
   apiRateLimitMax: envData.API_RATE_LIMIT_MAX,
 };

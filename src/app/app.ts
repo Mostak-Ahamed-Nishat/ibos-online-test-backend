@@ -19,6 +19,10 @@ const normalizedFrontendOrigin = normalizeOrigin(env.appFrontendUrl);
 const allowedOriginRules = Array.from(new Set([...configuredCorsOrigins, normalizedFrontendOrigin]));
 
 const isOriginAllowed = (origin: string): boolean => {
+  if (env.corsAllowAll || allowedOriginRules.includes("*")) {
+    return true;
+  }
+
   const normalized = normalizeOrigin(origin);
 
   return allowedOriginRules.some((rule) => {
