@@ -14,12 +14,37 @@ const normalizeOrigin = (value: string): string => {
   return value.trim().replace(/\/+$/, "").toLowerCase();
 };
 
-const configuredCorsOrigins = env.corsOrigins.map(normalizeOrigin);
+const configuredCorsOrigins = env.corsOrigins.map(normalizeOrigin).filter(Boolean);
 const normalizedFrontendOrigin = normalizeOrigin(env.appFrontendUrl);
-const allowedOrigins =
-  configuredCorsOrigins.length > 0
-    ? new Set([...configuredCorsOrigins, normalizedFrontendOrigin])
-    : null;
+const allowedOriginRules = Array.from(new Set([...configuredCorsOrigins, normalizedFrontendOrigin]));
+
+const isOriginAllowed = (origin: string): boolean => {
+  const normalized = normalizeOrigin(origin);
+
+  return allowedOriginRules.some((rule) => {
+    if (rule.includes("*")) {
+      const ruleUrl = new URL(rule);
+      const originUrl = new URL(normalized);
+
+      if (ruleUrl.protocol !== originUrl.protocol) {
+        return false;
+      }
+
+      const wildcardHost = ruleUrl.hostname.toLowerCase();
+      if (!wildcardHost.startsWith("*.")) {
+        return false;
+      }
+
+      const baseHost = wildcardHost.slice(2);
+      return (
+        originUrl.hostname.toLowerCase() === baseHost ||
+        originUrl.hostname.toLowerCase().endsWith(`.${baseHost}`)
+      );
+    }
+
+    return normalized === rule;
+  });
+};
 
 app.use(helmet());
 app.disable("x-powered-by");
@@ -32,12 +57,7 @@ app.use(
         return;
       }
 
-      if (!allowedOrigins) {
-        callback(null, true);
-        return;
-      }
-
-      if (allowedOrigins.has(normalizeOrigin(origin))) {
+      if (isOriginAllowed(origin)) {
         callback(null, true);
         return;
       }
@@ -49,6 +69,8 @@ app.use(
       );
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 app.use(cookieParser());
