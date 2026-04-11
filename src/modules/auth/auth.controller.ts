@@ -55,6 +55,53 @@ class AuthController {
     return normalized.length > 0 ? normalized : null;
   }
 
+  private prefersHtml(req: Request): boolean {
+    const accepted = req.accepts(["html", "json"]);
+    return accepted === "html";
+  }
+
+  private renderVerificationStatusPage(options: {
+    title: string;
+    message: string;
+    description: string;
+    statusCode: number;
+    tone: "success" | "error";
+  }): string {
+    const accent = options.tone === "success" ? "#15803d" : "#b91c1c";
+    const background =
+      options.tone === "success"
+        ? "linear-gradient(140deg, #dcfce7 0%, #f0fdf4 55%, #ffffff 100%)"
+        : "linear-gradient(140deg, #fee2e2 0%, #fef2f2 55%, #ffffff 100%)";
+    const badgeText = options.tone === "success" ? "Verified" : "Verification Failed";
+
+    return `
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${options.title}</title>
+        </head>
+        <body style="margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:${background};font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
+          <main style="width:100%;max-width:560px;background:#ffffff;border-radius:18px;padding:40px 32px;box-shadow:0 14px 32px rgba(15,23,42,0.14);text-align:center;">
+            <p style="margin:0 0 10px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:${accent};font-weight:700;">
+              ${badgeText}
+            </p>
+            <h1 style="margin:0 0 14px;font-size:30px;line-height:1.2;">
+              ${options.message}
+            </h1>
+            <p style="margin:0;font-size:16px;line-height:1.7;color:#334155;">
+              ${options.description}
+            </p>
+            <p style="margin:18px 0 0;font-size:12px;color:#64748b;">
+              Status code: ${options.statusCode}
+            </p>
+          </main>
+        </body>
+      </html>
+    `;
+  }
+
   register = asyncHandler(async (req: Request, res: Response) => {
     const payload = req.body as RegisterInput;
     const result = await authService.register(payload);
@@ -83,12 +130,47 @@ class AuthController {
 
   verifyEmail = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as VerifyEmailQueryInput;
-    const result = await authService.verifyEmail(query);
+    try {
+      const result = await authService.verifyEmail(query);
 
-    res.status(200).json({
-      success: true,
-      ...result,
-    });
+      if (this.prefersHtml(req)) {
+        res.status(200).type("html").send(
+          this.renderVerificationStatusPage({
+            title: "iBOS Exam Account Verified",
+            message: "Your iBOS Exam account is verified",
+            description: "Your account is now active. You can return to the app and log in.",
+            statusCode: 200,
+            tone: "success",
+          }),
+        );
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      if (!this.prefersHtml(req)) {
+        throw error;
+      }
+
+      const statusCode = error instanceof ApiError ? error.statusCode : 500;
+      const message =
+        statusCode === 400
+          ? "This verification link is invalid or expired."
+          : "Something went wrong while verifying your account.";
+
+      res.status(statusCode).type("html").send(
+        this.renderVerificationStatusPage({
+          title: "iBOS Exam Verification",
+          message,
+          description: "Please request a new verification email and try again.",
+          statusCode,
+          tone: "error",
+        }),
+      );
+    }
   });
 
   resendVerification = asyncHandler(async (req: Request, res: Response) => {

@@ -46,17 +46,45 @@ export const buildResetLink = (rawToken: string): string =>
 export const sendVerificationEmail = async (to: string, verificationLink: string): Promise<void> => {
   await sendEmail({
     to,
-    subject: "Verify your email address",
-    text: `Welcome to iBOS Exam. Verify your email: ${verificationLink}`,
+    subject: "Activate your iBOS Exam account",
+    text: [
+      "Welcome to iBOS Exam.",
+      "Click the verification link below to activate your account:",
+      verificationLink,
+    ].join("\n"),
     html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Verify your email</h2>
-        <p>Welcome to iBOS Exam. Please verify your email to activate your account.</p>
-        <p>
-          <a href="${verificationLink}" target="_blank" rel="noreferrer">Verify Email</a>
-        </p>
-        <p>If the button does not work, use this link:</p>
-        <p>${verificationLink}</p>
+      <div style="margin: 0; padding: 24px; background: #f2f6ff; font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);">
+          <tr>
+            <td style="padding: 32px 32px 8px;">
+              <p style="margin: 0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #2563eb; font-weight: 700;">iBOS Exam</p>
+              <h2 style="margin: 12px 0 0; font-size: 28px; line-height: 1.2;">Verify Your Account</h2>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 32px 32px;">
+              <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #334155;">
+                Welcome to iBOS Exam. Click the button below to activate your account and start your exam journey.
+              </p>
+              <a
+                href="${verificationLink}"
+                target="_blank"
+                rel="noreferrer"
+                style="display: inline-block; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 700; padding: 14px 26px; border-radius: 12px;"
+              >
+                Verify iBOS Account
+              </a>
+              <p style="margin: 24px 0 0; font-size: 13px; line-height: 1.6; color: #64748b;">
+                If the button does not work, copy and open this link in your browser:
+              </p>
+              <p style="margin: 8px 0 0; font-size: 13px; word-break: break-all;">
+                <a href="${verificationLink}" target="_blank" rel="noreferrer" style="color: #1d4ed8; text-decoration: underline;">
+                  ${verificationLink}
+                </a>
+              </p>
+            </td>
+          </tr>
+        </table>
       </div>
     `,
   });
