@@ -17,6 +17,10 @@ const hasSmtpConfig =
   Boolean(env.smtpFrom);
 
 let transporter: Transporter | null = null;
+let hasWarnedAboutSandboxHost = false;
+
+const isMailtrapSandboxHost = (host: string): boolean =>
+  host.trim().toLowerCase() === "sandbox.smtp.mailtrap.io";
 
 const getTransporter = (): Transporter => {
   if (!hasSmtpConfig) {
@@ -46,13 +50,35 @@ export const sendEmail = async ({
 }: SendEmailInput): Promise<void> => {
   const smtp = getTransporter();
 
-  await smtp.sendMail({
+  if (isMailtrapSandboxHost(env.smtpHost) && !hasWarnedAboutSandboxHost) {
+    console.warn(
+      "SMTP host is set to Mailtrap sandbox. This captures emails for testing and does not deliver to real inboxes.",
+    );
+    hasWarnedAboutSandboxHost = true;
+  }
+
+  const info = await smtp.sendMail({
     from: env.smtpFrom,
     to,
     subject,
     html,
     text,
   });
+
+  const rejected = info.rejected.map((address: string | { address: string }) => {
+    if (typeof address === "string") {
+      return address.trim().toLowerCase();
+    }
+
+    return address.address.trim().toLowerCase();
+  });
+  const normalizedTo = to.trim().toLowerCase();
+  const noAcceptedRecipients = info.accepted.length === 0;
+  const targetRecipientRejected = rejected.includes(normalizedTo);
+
+  if (noAcceptedRecipients || targetRecipientRejected) {
+    throw new ApiError(502, "Email delivery was rejected by the SMTP server");
+  }
 };
 
 export const isEmailServiceConfigured = (): boolean => hasSmtpConfig;
