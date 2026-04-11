@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import { ApiError } from "../../utils/api-error";
-import { env } from "../../config/env";
 import { issueAccessToken } from "./auth.token";
 import {
   EmailVerificationTokenModel,
@@ -57,10 +56,7 @@ export class AuthService {
     return { accessToken };
   }
 
-  async register(payload: RegisterInput): Promise<{
-    message: string;
-    verificationLink?: string;
-  }> {
+  async register(payload: RegisterInput): Promise<{ message: string }> {
     ensureEmailServiceConfigured();
 
     const existingUser = await UserModel.findOne({ email: payload.email }).lean();
@@ -81,12 +77,10 @@ export class AuthService {
     });
 
     const rawToken = await createEmailVerificationToken(String(user._id));
-    const verificationLink = buildVerificationLink(rawToken);
-    await sendVerificationEmail(user.email, verificationLink);
+    await sendVerificationEmail(user.email, buildVerificationLink(rawToken));
 
     return {
       message: "Registration successful. Verification email has been sent.",
-      ...(env.nodeEnv !== "production" ? { verificationLink } : {}),
     };
   }
 
