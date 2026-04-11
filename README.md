@@ -30,15 +30,24 @@ ACCESS_TOKEN_SECRET=change_this_to_a_long_random_secret
 ACCESS_TOKEN_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_IN_DAYS=30
 REFRESH_TOKEN_COOKIE_NAME=refreshToken
-SMTP_HOST=sandbox.smtp.mailtrap.io
-SMTP_PORT=2525
-SMTP_USER=your_mailtrap_username
-SMTP_PASS=your_mailtrap_password
-SMTP_FROM="iBOS Exam <no-reply@example.com>"
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USER=a7cd5d001@smtp-brevo.com
+SMTP_PASS=your_brevo_smtp_key
+SMTP_FROM="iBOS Exam Verification <no-reply@yourdomain.com>"
 ADMIN_SEED_EMAIL=admin@example.com
 ADMIN_SEED_PASSWORD=ChangeThisAdminPassword123!
 ADMIN_SEED_FULL_NAME=System Admin
 ADMIN_SEED_STUDENT_ID=ADM001
+```
+
+Important:
+- Use your Brevo SMTP key in `SMTP_PASS`.
+- Use a valid sender format for `SMTP_FROM`, for example: `iBOS Exam Verification <no-reply@yourdomain.com>`.
+
+SMTP check command:
+```bash
+npm run test:email -- your-email@example.com
 ```
 
 ## Scripts
@@ -46,6 +55,7 @@ ADMIN_SEED_STUDENT_ID=ADM001
 - `npm run build` - Build TypeScript to `dist/`
 - `npm run start` - Run production build
 - `npm run seed:admin` - Create/update admin from env values
+- `npm run test:email -- your-email@example.com` - Send a direct SMTP test email
 
 ## Core Endpoints
 - `GET /api/health`
